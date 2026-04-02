@@ -405,16 +405,18 @@ end
     @test response4.status == 200
     @test String(response4.body) == "2:inochi"
 
-    bad_text_ctx = Context(HTTP.Request("POST", "/text", ["Content-Type" => "application/json"], "\"hello\""))
+    parser_app = App()
+
+    bad_text_ctx = Context(parser_app, HTTP.Request("POST", "/text", ["Content-Type" => "application/json"], "\"hello\""))
     @test_throws ArgumentError reqtext(bad_text_ctx)
 
-    bad_json_ctx = Context(HTTP.Request("POST", "/json", ["Content-Type" => "text/plain"], "{\"name\":\"alice\"}"))
+    bad_json_ctx = Context(parser_app, HTTP.Request("POST", "/json", ["Content-Type" => "text/plain"], "{\"name\":\"alice\"}"))
     @test_throws ArgumentError reqjson(bad_json_ctx)
 
-    bad_form_ctx = Context(HTTP.Request("POST", "/form", ["Content-Type" => "application/json"], "x=10"))
+    bad_form_ctx = Context(parser_app, HTTP.Request("POST", "/form", ["Content-Type" => "application/json"], "x=10"))
     @test_throws ArgumentError reqform(bad_form_ctx)
 
-    charset_json_ctx = Context(HTTP.Request("POST", "/json", ["Content-Type" => "application/json; charset=utf-8"], "{\"name\":\"bob\",\"count\":4}"))
+    charset_json_ctx = Context(parser_app, HTTP.Request("POST", "/json", ["Content-Type" => "application/json; charset=utf-8"], "{\"name\":\"bob\",\"count\":4}"))
     @test reqjson(charset_json_ctx)["name"] == "bob"
 end
 
@@ -449,14 +451,15 @@ end
 
 @testset "Secure Cookies" begin
     app = App()
+    app.secret = "top-secret"
 
     get(app, "/secure-set") do ctx
-        set_secure_cookie(ctx, "session", "abc123"; secret = "top-secret", path = "/", httponly = true)
+        set_secure_cookie(ctx, "session", "abc123"; path = "/", httponly = true)
         text(ctx, "ok")
     end
 
     get(app, "/secure-read") do ctx
-        text(ctx, string(secure_cookie(ctx, "session"; secret = "top-secret", default = "missing")))
+        text(ctx, string(secure_cookie(ctx, "session"; default = "missing")))
     end
 
     response1 = Inochi.dispatch(app, HTTP.Request("GET", "/secure-set"))

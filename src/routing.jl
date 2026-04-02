@@ -303,7 +303,7 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
     matcher = get_matcher(app, req.method)
     final_match = match_final_route(matcher, path)
     base_params = final_match === nothing ? RouteParams() : final_match.params
-    ctx = Context(req; params = base_params)
+    ctx = Context(app, req; params = base_params)
     middleware_stack = collect_middlewares(app, req.method, path, final_match)
 
     try

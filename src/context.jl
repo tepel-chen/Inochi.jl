@@ -1,9 +1,10 @@
 """
-    Context(req; params = RouteParams())
+    Context(app, req; params = RouteParams())
 
 Request-scoped context passed to handlers and middleware.
 """
 mutable struct Context
+    app::App
     req::HTTP.Request
     params::RouteParams
     status::Int
@@ -13,8 +14,8 @@ mutable struct Context
     state::Dict{Symbol,Any}
 end
 
-function Context(req::HTTP.Request; params::RouteParams = RouteParams())
-    return Context(req, params, 200, Dict{String,String}(), "", HTTP.Cookies.Cookie[], Dict{Symbol,Any}())
+function Context(app::App, req::HTTP.Request; params::RouteParams = RouteParams())
+    return Context(app, req, params, 200, Dict{String,String}(), "", HTTP.Cookies.Cookie[], Dict{Symbol,Any}())
 end
 
 struct CookieAccessor
@@ -35,7 +36,7 @@ function (accessor::CookieAccessor)(key::AbstractString, default = nothing)
 end
 
 function Base.getproperty(ctx::Context, name::Symbol)
-    if name in (:req, :params, :status, :headers, :body, :cookies_out, :state)
+    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state)
         return getfield(ctx, name)
     elseif name == :cookie
         return CookieAccessor(ctx)
@@ -111,19 +112,20 @@ function secure_cookie_signature(secret::AbstractString, value::AbstractString):
 end
 
 """
-    secure_cookie(ctx, name; secret, default = nothing)
+    secure_cookie(ctx, name; secret = nothing, default = nothing)
 
 Read and verify a signed cookie formatted as `<BASE64>.<HMAC>`.
 """
-function secure_cookie(ctx::Context, name::AbstractString; secret::AbstractString, default = nothing)
+function secure_cookie(ctx::Context, name::AbstractString; secret = nothing, default = nothing)
     raw_value = ctx.cookie(String(name), nothing)
     raw_value === nothing && return default
 
     parts = split(raw_value, '.'; limit = 2)
     length(parts) == 2 || return default
     payload, signature = parts
+    resolved_secret = resolve_cookie_secret(ctx, secret)
 
-    constant_time_equals(signature, secure_cookie_signature(secret, payload)) || return default
+    constant_time_equals(signature, secure_cookie_signature(resolved_secret, payload)) || return default
 
     try
         return String(base64decode(payload))
@@ -133,14 +135,24 @@ function secure_cookie(ctx::Context, name::AbstractString; secret::AbstractStrin
 end
 
 """
-    set_secure_cookie(ctx, name, value; secret, kwargs...)
+    set_secure_cookie(ctx, name, value; secret = nothing, kwargs...)
 
 Set a signed cookie formatted as `<BASE64>.<HMAC>`.
 """
-function set_secure_cookie(ctx::Context, name::AbstractString, value; secret::AbstractString, kwargs...)::Context
+function set_secure_cookie(ctx::Context, name::AbstractString, value; secret = nothing, kwargs...)::Context
     payload = base64encode(String(value))
-    signature = secure_cookie_signature(secret, payload)
+    signature = secure_cookie_signature(resolve_cookie_secret(ctx, secret), payload)
     return setcookie(ctx, name, payload * "." * signature; kwargs...)
+end
+
+function resolve_cookie_secret(ctx::Context, secret)::String
+    if secret !== nothing
+        return String(secret)
+    elseif ctx.app.secret !== nothing
+        return ctx.app.secret
+    else
+        throw(ArgumentError("No app.secret configured for secure cookies"))
+    end
 end
 
 function request_content_type(ctx::Context)::String

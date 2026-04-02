@@ -41,6 +41,7 @@ mutable struct App
     dirty::Bool
     error_handler::Union{Nothing,Function}
     notfound_handler::Union{Nothing,Function}
+    secret::Union{Nothing,String}
 end
 
 """
@@ -48,4 +49,4 @@ end
 
 Create a new Inochi application.
 """
-App() = App(RouteDefinition[], Dict{String,MethodMatcher}(), true, nothing, nothing)
+App() = App(RouteDefinition[], Dict{String,MethodMatcher}(), true, nothing, nothing, nothing)
