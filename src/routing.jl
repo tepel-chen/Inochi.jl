@@ -312,10 +312,10 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
             if final_match.is_middleware
                 not_found = () -> handle_notfound(app, ctx)
                 ctx.params = final_match.params
-                return to_response(invoke_middleware(final_match.handler, ctx, not_found))
+                return to_response(invoke_middleware(final_match.handler, ctx, not_found), ctx)
             end
             ctx.params = final_match.params
-            return to_response(invoke_handler(final_match.handler, ctx; prefer_params = final_match.prefers_params))
+            return to_response(invoke_handler(final_match.handler, ctx; prefer_params = final_match.prefers_params), ctx)
         end
 
         return run_middlewares(middleware_stack, ctx, final_handler)
@@ -582,7 +582,7 @@ function run_middlewares(middlewares, ctx::Context, final_handler::Function, ind
     end
     original_params = ctx.params
     ctx.params = middleware.params
-    result = to_response(invoke_middleware(middleware.handler, ctx, next_handler))
+    result = to_response(invoke_middleware(middleware.handler, ctx, next_handler), ctx)
     ctx.params = original_params
     return result
 end
@@ -593,7 +593,7 @@ function handle_error(app::App, ctx::Context, err)::HTTP.Response
     end
 
     try
-        return to_response(invoke_error_handler(app.error_handler, ctx, err))
+        return to_response(invoke_error_handler(app.error_handler, ctx, err), ctx)
     catch
         return default_error_response()
     end
@@ -605,14 +605,14 @@ function handle_notfound(app::App, ctx::Context)::HTTP.Response
     end
 
     try
-        return to_response(invoke_notfound_handler(app.notfound_handler, ctx))
+        return to_response(invoke_notfound_handler(app.notfound_handler, ctx), ctx)
     catch
         return default_notfound_response()
     end
 end
 
-default_error_response() = HTTP.Response(500, "Internal Server Error")
-default_notfound_response() = HTTP.Response(404, "Not Found")
+default_error_response() = apply_default_headers(HTTP.Response(500, "Internal Server Error"))
+default_notfound_response() = apply_default_headers(HTTP.Response(404, "Not Found"))
 
 function invoke_error_handler(handler::Function, ctx::Context, err)
     try
@@ -734,12 +734,26 @@ end
 
 function to_response(result)::HTTP.Response
     if result isa HTTP.Response
-        return result
+        return apply_default_headers(result)
     elseif result isa AbstractString
-        return HTTP.Response(200, String(result))
+        return apply_default_headers(HTTP.Response(200, String(result)))
     elseif result isa Vector{UInt8}
-        return HTTP.Response(200, result)
+        return apply_default_headers(HTTP.Response(200, result))
     else
-        return HTTP.Response(200, string(result))
+        return apply_default_headers(HTTP.Response(200, string(result)))
+    end
+end
+
+function to_response(result, ctx::Context)::HTTP.Response
+    if result isa Context
+        return to_response(result)
+    elseif result isa HTTP.Response
+        return apply_default_headers(result, ctx)
+    elseif result isa AbstractString
+        return apply_default_headers(HTTP.Response(200, String(result)), ctx)
+    elseif result isa Vector{UInt8}
+        return apply_default_headers(HTTP.Response(200, result), ctx)
+    else
+        return apply_default_headers(HTTP.Response(200, string(result)), ctx)
     end
 end

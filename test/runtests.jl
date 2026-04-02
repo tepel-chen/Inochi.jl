@@ -3,6 +3,9 @@ using Test
 using HTTP
 using Base64
 
+const EXPECTED_SERVER_HEADER = "Inochi/" * Inochi.INOCHI_VERSION * " Julia/" * Inochi.JULIA_VERSION
+const HTTP_DATE_PATTERN = r"^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}:\d{2} GMT$"
+
 @testset "Inochi.jl" begin
     app = App()
 
@@ -22,6 +25,9 @@ using Base64
     root_response = Inochi.dispatch(app, HTTP.Request("GET", "/"))
     @test root_response.status == 200
     @test String(root_response.body) == "hello"
+    @test HTTP.header(root_response, "Server") == EXPECTED_SERVER_HEADER
+    @test occursin(HTTP_DATE_PATTERN, HTTP.header(root_response, "Date"))
+    @test HTTP.header(root_response, "Vary") == "Origin"
 
     request_response = Inochi.dispatch(app, HTTP.Request("GET", "/with-request"))
     @test request_response.status == 200
@@ -30,6 +36,24 @@ using Base64
     missing_response = Inochi.dispatch(app, HTTP.Request("GET", "/missing"))
     @test missing_response.status == 404
     @test String(missing_response.body) == "Not Found"
+    @test HTTP.header(missing_response, "Server") == EXPECTED_SERVER_HEADER
+    @test occursin(HTTP_DATE_PATTERN, HTTP.header(missing_response, "Date"))
+    @test HTTP.header(missing_response, "Vary") == "Origin"
+end
+
+@testset "Server Header" begin
+    app = App()
+
+    get(app, "/raw") do
+        HTTP.Response(201, "created")
+    end
+
+    response = Inochi.dispatch(app, HTTP.Request("GET", "/raw"))
+    @test response.status == 201
+    @test String(response.body) == "created"
+    @test HTTP.header(response, "Server") == EXPECTED_SERVER_HEADER
+    @test occursin(HTTP_DATE_PATTERN, HTTP.header(response, "Date"))
+    @test HTTP.header(response, "Vary") == "Origin"
 end
 
 @testset "Regex Router" begin
@@ -486,11 +510,13 @@ end
     response = Inochi.dispatch(app, req)
     @test response.status == 200
     @test String(response.body) == "abc:dark"
+    @test HTTP.header(response, "Vary") == "Origin, Cookie"
 
     response2 = Inochi.dispatch(app, HTTP.Request("GET", "/set-cookie"))
     set_cookie_headers = String.(HTTP.headers(response2, "Set-Cookie"))
     @test response2.status == 200
     @test String(response2.body) == "ok"
+    @test HTTP.header(response2, "Vary") == "Origin"
     @test length(set_cookie_headers) == 2
     @test any(header -> occursin("session=abc", header), set_cookie_headers)
     @test any(header -> occursin("HttpOnly", header), set_cookie_headers)
@@ -519,11 +545,13 @@ end
     req = HTTP.Request("GET", "/secure-read", ["Cookie" => secure_value])
     response2 = Inochi.dispatch(app, req)
     @test String(response2.body) == "abc123"
+    @test HTTP.header(response2, "Vary") == "Origin, Cookie"
 
     tampered = secure_value[1:end-1] * (secure_value[end] == '0' ? "1" : "0")
     bad_req = HTTP.Request("GET", "/secure-read", ["Cookie" => tampered])
     response3 = Inochi.dispatch(app, bad_req)
     @test String(response3.body) == "missing"
+    @test HTTP.header(response3, "Vary") == "Origin, Cookie"
 end
 
 @testset "Built-in Middleware" begin

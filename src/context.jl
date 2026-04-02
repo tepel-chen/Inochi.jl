@@ -12,10 +12,11 @@ mutable struct Context
     body::Any
     cookies_out::Vector{HTTP.Cookies.Cookie}
     state::Dict{Symbol,Any}
+    varies_on_cookie::Bool
 end
 
 function Context(app::App, req::HTTP.Request; params::RouteParams = RouteParams())
-    return Context(app, req, params, 200, Dict{String,String}(), "", HTTP.Cookies.Cookie[], Dict{Symbol,Any}())
+    return Context(app, req, params, 200, Dict{String,String}(), "", HTTP.Cookies.Cookie[], Dict{Symbol,Any}(), false)
 end
 
 struct CookieAccessor
@@ -29,6 +30,7 @@ function Base.getindex(accessor::CookieAccessor, key::AbstractString)
 end
 
 function (accessor::CookieAccessor)(key::AbstractString, default = nothing)
+    accessor.ctx.varies_on_cookie = true
     for cookie in HTTP.Cookies.cookies(accessor.ctx.req)
         cookie.name == key && return cookie.value
     end
@@ -36,7 +38,7 @@ function (accessor::CookieAccessor)(key::AbstractString, default = nothing)
 end
 
 function Base.getproperty(ctx::Context, name::Symbol)
-    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state)
+    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state, :varies_on_cookie)
         return getfield(ctx, name)
     elseif name == :cookie
         return CookieAccessor(ctx)
@@ -320,10 +322,56 @@ function Base.get(ctx::Context, key::Symbol, default = nothing)
     return get(ctx.state, key, default)
 end
 
+const SERVER_HEADER_NAME = "Server"
+const SERVER_HEADER_VALUE = "Inochi/" * INOCHI_VERSION * " Julia/" * JULIA_VERSION
+const DATE_HEADER_NAME = "Date"
+const VARY_HEADER_NAME = "Vary"
+const DEFAULT_VARY_VALUE = "Origin"
+
+function http_date(now::DateTime = now(UTC))::String
+    weekdays = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    weekday = weekdays[dayofweek(now)]
+    month_name = months[month(now)]
+    return @sprintf("%s, %02d %s %04d %02d:%02d:%02d GMT", weekday, day(now), month_name, year(now), hour(now), minute(now), second(now))
+end
+
+function merge_vary(existing::AbstractString, value::AbstractString)::String
+    entries = String[]
+    seen = Set{String}()
+
+    for item in split(existing, ',')
+        normalized = strip(item)
+        isempty(normalized) && continue
+        lowercase(normalized) in seen && continue
+        push!(entries, normalized)
+        push!(seen, lowercase(normalized))
+    end
+
+    normalized_value = strip(String(value))
+    if !isempty(normalized_value) && !(lowercase(normalized_value) in seen)
+        push!(entries, normalized_value)
+    end
+
+    return join(entries, ", ")
+end
+
+function apply_default_headers(response::HTTP.Response, ctx::Union{Nothing,Context} = nothing)::HTTP.Response
+    HTTP.setheader(response, SERVER_HEADER_NAME => SERVER_HEADER_VALUE)
+    HTTP.setheader(response, DATE_HEADER_NAME => http_date())
+    existing_vary = HTTP.header(response, VARY_HEADER_NAME, "")
+    vary = merge_vary(existing_vary, DEFAULT_VARY_VALUE)
+    if ctx !== nothing && ctx.varies_on_cookie
+        vary = merge_vary(vary, "Cookie")
+    end
+    HTTP.setheader(response, VARY_HEADER_NAME => vary)
+    return response
+end
+
 function to_response(ctx::Context)::HTTP.Response
     response = HTTP.Response(ctx.status, collect(pairs(ctx.headers)), ctx.body)
     for cookie in ctx.cookies_out
         HTTP.Cookies.addcookie!(response, cookie)
     end
-    return response
+    return apply_default_headers(response, ctx)
 end
