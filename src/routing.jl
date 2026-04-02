@@ -57,6 +57,33 @@ function register_route!(app::App, method::AbstractString, path::AbstractString,
 end
 
 """
+    route(app, prefix, subapp)
+
+Mount `subapp` under `prefix` by copying its routes into `app` with the given prefix.
+"""
+function route(app::App, prefix::AbstractString, subapp::App)::App
+    normalized_prefix = normalize_path(prefix)
+
+    for route_def in subapp.routes
+        mounted_path = mount_path(normalized_prefix, route_def.path)
+        push!(
+            app.routes,
+            RouteDefinition(
+                route_def.method,
+                mounted_path,
+                route_def.handler,
+                route_def.prefers_params,
+                route_def.is_middleware,
+                route_def.middleware_scope,
+            ),
+        )
+    end
+
+    app.dirty = true
+    return app
+end
+
+"""
     use(app) do ctx, next
         ...
     end
@@ -225,6 +252,20 @@ function normalize_path(path::AbstractString)::String
     return value
 end
 
+function mount_path(prefix::String, path::String)::String
+    normalized_path = normalize_path(path)
+
+    if prefix == "/"
+        return normalized_path
+    elseif normalized_path == "/"
+        return prefix
+    elseif normalized_path == "/*"
+        return prefix * "/*"
+    else
+        return prefix * normalized_path
+    end
+end
+
 function expand_optional_paths(path::AbstractString)::Vector{String}
     normalized_path = normalize_path(path)
     parts = split(normalized_path, '/', keepempty = false)
@@ -340,6 +381,8 @@ function build_method_matcher(routes::Vector{RouteDefinition})::MethodMatcher
     route_index = 0
 
     for route in routes
+        route.is_middleware && route.middleware_scope == :prefix && continue
+
         parsed = parse_route_pattern(route.path)
         if parsed.static
             static_map[route.path] = StaticRoute(route.handler, route.path, route.prefers_params, route.is_middleware, route.middleware_scope)

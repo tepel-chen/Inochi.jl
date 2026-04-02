@@ -561,6 +561,54 @@ end
     @test String(response2.body) == "missing:/nope"
 end
 
+@testset "Mounted Apps" begin
+    admin = App()
+    root = App()
+    events = String[]
+
+    use(admin) do ctx, next
+        push!(events, "mw:" * String(HTTP.URIs.URI(ctx.target).path))
+        next()
+    end
+
+    get(admin, "/") do
+        "admin-root"
+    end
+
+    get(admin, "/users/:id") do ctx
+        "user:" * ctx.params["id"]
+    end
+
+    get(admin, "/reports/:name?") do ctx
+        get(ctx.params, "name", "index")
+    end
+
+    route(root, "/admin", admin)
+
+    response1 = Inochi.dispatch(root, HTTP.Request("GET", "/admin"))
+    @test response1.status == 200
+    @test String(response1.body) == "admin-root"
+
+    response2 = Inochi.dispatch(root, HTTP.Request("GET", "/admin/users/42"))
+    @test response2.status == 200
+    @test String(response2.body) == "user:42"
+
+    response3 = Inochi.dispatch(root, HTTP.Request("GET", "/admin/reports"))
+    @test response3.status == 200
+    @test String(response3.body) == "index"
+
+    response4 = Inochi.dispatch(root, HTTP.Request("GET", "/admin/reports/daily"))
+    @test response4.status == 200
+    @test String(response4.body) == "daily"
+
+    @test events == [
+        "mw:/admin",
+        "mw:/admin/users/42",
+        "mw:/admin/reports",
+        "mw:/admin/reports/daily",
+    ]
+end
+
 @testset "Static Files" begin
     mktempdir(@__DIR__) do tmpdir
         assets_dir = joinpath(tmpdir, "assets")
