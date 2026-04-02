@@ -14,7 +14,7 @@ const INOCHI_VERSION = string(pkgversion(@__MODULE__))
 const JULIA_VERSION = string(VERSION)
 
 export App, RouteParams, connect, delete, get, head, options, patch, post, put, trace, use, start
-export Context, basicAuth, body!, cors, header!, html, logger, on_error, on_notfound, redirect, render, render_text, reqform, reqjson, reqquery, reqtext, route, secure_cookie, sendFile, set_secure_cookie, setcookie, start, static, status!, text, json, set!, get
+export Context, basicAuth, body!, cors, etag, header!, html, logger, on_error, on_notfound, redirect, render, render_text, reqform, reqjson, reqquery, reqtext, route, secure_cookie, sendFile, set_secure_cookie, setcookie, start, static, status!, text, json, set!, get
 
 include("types.jl")
 include("context.jl")

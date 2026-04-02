@@ -30,8 +30,8 @@ get(app, "/") do ctx
     ctx.render("index.iwai", render_index_data(STORE))
 end
 
-get(app, "/about") do
-    sendFile("public/about.html")
+get(app, "/about") do ctx
+    sendFile(ctx, "public/about.html")
 end
 
 println("Todo app listening on http://127.0.0.1:8080")

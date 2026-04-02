@@ -9,6 +9,9 @@ const UTF8_MIME_TYPES = Set((
     "text/plain",
 ))
 
+const ETAG_HEADER_NAME = "ETag"
+const IF_NONE_MATCH_HEADER_NAME = "If-None-Match"
+
 function executable_root()::String
     base = isempty(Base.PROGRAM_FILE) ? pwd() : dirname(abspath(Base.PROGRAM_FILE))
     return normpath(base)
@@ -32,18 +35,79 @@ function content_type_for_path(path::AbstractString)::String
     return mime in UTF8_MIME_TYPES || startswith(mime, "text/") ? mime * "; charset=utf-8" : mime
 end
 
+function etag_for_bytes(bytes::Vector{UInt8})::String
+    return "\"" * bytes2hex(sha1(bytes)) * "\""
+end
+
+etag_for_bytes(text::AbstractString)::String = etag_for_bytes(Vector{UInt8}(codeunits(text)))
+
+function response_bytes(body)::Union{Nothing,Vector{UInt8}}
+    if body isa Vector{UInt8}
+        return body
+    elseif body isa AbstractVector{UInt8}
+        return Vector{UInt8}(body)
+    elseif body isa AbstractString
+        return Vector{UInt8}(codeunits(String(body)))
+    else
+        return nothing
+    end
+end
+
+function if_none_match_matches(req::HTTP.Request, etag::AbstractString)::Bool
+    header = strip(HTTP.header(req, IF_NONE_MATCH_HEADER_NAME, ""))
+    isempty(header) && return false
+    header == "*" && return true
+
+    for candidate in split(header, ',')
+        strip(candidate) == etag && return true
+    end
+
+    return false
+end
+
+function maybe_not_modified(req::Union{Nothing,HTTP.Request}, etag::AbstractString)::Union{Nothing,HTTP.Response}
+    req === nothing && return nothing
+    if if_none_match_matches(req, etag)
+        return HTTP.Response(304, [ETAG_HEADER_NAME => etag])
+    end
+    return nothing
+end
+
+function with_etag(response::HTTP.Response, etag::AbstractString)::HTTP.Response
+    HTTP.setheader(response, ETAG_HEADER_NAME => etag)
+    return response
+end
+
+function file_response(path::AbstractString; req::Union{Nothing,HTTP.Request} = nothing, root::AbstractString = executable_root())::HTTP.Response
+    resolved = safe_join(root, path)
+    resolved === nothing && return HTTP.Response(403, "Forbidden")
+    isfile(resolved) || return HTTP.Response(404, "Not Found")
+
+    body = read(resolved)
+    etag = etag_for_bytes(body)
+    not_modified = maybe_not_modified(req, etag)
+    not_modified !== nothing && return not_modified
+
+    headers = ["Content-Type" => content_type_for_path(resolved), ETAG_HEADER_NAME => etag]
+    return HTTP.Response(200, headers, body)
+end
+
 """
     sendFile(path; root = executable_root())
 
 Return a file response rooted at `root`. Requests outside the root are rejected.
 """
 function sendFile(path::AbstractString; root::AbstractString = executable_root())::HTTP.Response
-    resolved = safe_join(root, path)
-    resolved === nothing && return HTTP.Response(403, "Forbidden")
-    isfile(resolved) || return HTTP.Response(404, "Not Found")
+    return file_response(path; root = root)
+end
 
-    headers = ["Content-Type" => content_type_for_path(resolved)]
-    return HTTP.Response(200, headers, read(resolved))
+"""
+    sendFile(ctx, path; root = executable_root())
+
+Return a file response rooted at `root`, with `If-None-Match` support from `ctx.req`.
+"""
+function sendFile(ctx::Context, path::AbstractString; root::AbstractString = executable_root())::HTTP.Response
+    return file_response(path; req = ctx.req, root = root)
 end
 
 """
@@ -57,6 +121,6 @@ function static(root::AbstractString)::Function
     return function (ctx::Context)
         relative_path = get(ctx.params, "*", "")
         decoded_path = HTTP.URIs.unescapeuri(relative_path)
-        return sendFile(decoded_path; root = normalized_root)
+        return file_response(decoded_path; req = ctx.req, root = normalized_root)
     end
 end

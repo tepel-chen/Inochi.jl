@@ -559,6 +559,7 @@ end
     log_buffer = IOBuffer()
 
     use(app, cors())
+    use(app, etag())
     use(app, logger(; io = log_buffer))
     use(app, "/admin", basicAuth(username = "admin", password = "secret"))
 
@@ -573,6 +574,7 @@ end
     response1 = Inochi.dispatch(app, HTTP.Request("GET", "/hello"))
     @test response1.status == 200
     @test HTTP.header(response1, "Access-Control-Allow-Origin") == "*"
+    @test !isempty(HTTP.header(response1, "ETag"))
 
     response2 = Inochi.dispatch(app, HTTP.Request("OPTIONS", "/hello"))
     @test response2.status == 204
@@ -586,6 +588,10 @@ end
     response4 = Inochi.dispatch(app, HTTP.Request("GET", "/admin/panel", ["Authorization" => auth_header]))
     @test response4.status == 200
     @test String(response4.body) == "ok"
+
+    response5 = Inochi.dispatch(app, HTTP.Request("GET", "/hello", ["If-None-Match" => HTTP.header(response1, "ETag")]))
+    @test response5.status == 304
+    @test HTTP.header(response5, "ETag") == HTTP.header(response1, "ETag")
 
     logs = String(take!(log_buffer))
     @test occursin("GET /hello -> 200", logs)
@@ -707,13 +713,19 @@ end
         @test response1.status == 200
         @test String(response1.body) == "<h1>Hello</h1>"
         @test HTTP.header(response1, "Content-Type") == "text/html; charset=utf-8"
+        @test !isempty(HTTP.header(response1, "ETag"))
 
         response2 = Inochi.dispatch(app, HTTP.Request("GET", "/static/app.css"))
         @test response2.status == 200
         @test HTTP.header(response2, "Content-Type") == "text/css; charset=utf-8"
+        @test !isempty(HTTP.header(response2, "ETag"))
 
         response3 = Inochi.dispatch(app, HTTP.Request("GET", "/static/../secret.txt"))
         @test response3.status == 403
+
+        response4 = Inochi.dispatch(app, HTTP.Request("GET", "/static/index.html", ["If-None-Match" => HTTP.header(response1, "ETag")]))
+        @test response4.status == 304
+        @test HTTP.header(response4, "ETag") == HTTP.header(response1, "ETag")
     end
 end
 
@@ -725,8 +737,8 @@ end
 
     app = App()
 
-    get(app, "/download") do
-        sendFile("fixtures/sample.txt")
+    get(app, "/download") do ctx
+        sendFile(ctx, "fixtures/sample.txt")
     end
 
     get(app, "/blocked") do
@@ -737,7 +749,12 @@ end
     @test response1.status == 200
     @test String(response1.body) == "fixture"
     @test HTTP.header(response1, "Content-Type") == "text/plain; charset=utf-8"
+    @test !isempty(HTTP.header(response1, "ETag"))
 
     response2 = Inochi.dispatch(app, HTTP.Request("GET", "/blocked"))
     @test response2.status == 403
+
+    response3 = Inochi.dispatch(app, HTTP.Request("GET", "/download", ["If-None-Match" => HTTP.header(response1, "ETag")]))
+    @test response3.status == 304
+    @test HTTP.header(response3, "ETag") == HTTP.header(response1, "ETag")
 end
