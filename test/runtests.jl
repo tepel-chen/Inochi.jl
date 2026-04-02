@@ -325,7 +325,9 @@ end
     get(bad_app, "/boom") do
         "ok"
     end
-    @test_throws ArgumentError Inochi.dispatch(bad_app, HTTP.Request("GET", "/boom"))
+    response3 = Inochi.dispatch(bad_app, HTTP.Request("GET", "/boom"))
+    @test response3.status == 500
+    @test String(response3.body) == "Internal Server Error"
 end
 
 @testset "Context" begin
@@ -508,6 +510,55 @@ end
     logs = String(take!(log_buffer))
     @test occursin("GET /hello -> 200", logs)
     @test occursin("GET /admin/panel -> 200", logs)
+end
+
+@testset "Error Handling" begin
+    app = App()
+
+    get(app, "/boom") do
+        error("boom")
+    end
+
+    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/boom"))
+    @test response1.status == 500
+    @test String(response1.body) == "Internal Server Error"
+
+    custom_app = App()
+
+    use(custom_app, "/fail") do _, next
+        next()
+    end
+
+    get(custom_app, "/fail") do
+        throw(ArgumentError("bad request"))
+    end
+
+    on_error(custom_app) do ctx, err
+        json(ctx, Dict("error" => string(err)); status = 418)
+    end
+
+    response2 = Inochi.dispatch(custom_app, HTTP.Request("GET", "/fail"))
+    @test response2.status == 418
+    @test HTTP.header(response2, "Content-Type") == "application/json; charset=utf-8"
+    @test occursin("bad request", String(response2.body))
+end
+
+@testset "Not Found Handling" begin
+    app = App()
+
+    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/missing"))
+    @test response1.status == 404
+    @test String(response1.body) == "Not Found"
+
+    custom_app = App()
+
+    on_notfound(custom_app) do ctx
+        text(ctx, "missing:" * String(HTTP.URIs.URI(ctx.target).path); status = 404)
+    end
+
+    response2 = Inochi.dispatch(custom_app, HTTP.Request("GET", "/nope"))
+    @test response2.status == 404
+    @test String(response2.body) == "missing:/nope"
 end
 
 @testset "Static Files" begin

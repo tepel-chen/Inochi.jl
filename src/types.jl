@@ -39,6 +39,8 @@ mutable struct App
     routes::Vector{RouteDefinition}
     matchers::Dict{String,MethodMatcher}
     dirty::Bool
+    error_handler::Union{Nothing,Function}
+    notfound_handler::Union{Nothing,Function}
 end
 
 """
@@ -46,4 +48,4 @@ end
 
 Create a new Inochi application.
 """
-App() = App(RouteDefinition[], Dict{String,MethodMatcher}(), true)
+App() = App(RouteDefinition[], Dict{String,MethodMatcher}(), true, nothing, nothing)

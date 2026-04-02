@@ -10,6 +10,38 @@ const SUPPORTED_HTTP_METHODS = (
     "TRACE",
 )
 
+"""
+    on_error(app) do ctx, err
+        ...
+    end
+
+Register an application-wide error handler. The handler may accept `(ctx, err)`, `(req, err)`, or `(err)`.
+"""
+function on_error(handler::Function, app::App)::App
+    app.error_handler = handler
+    return app
+end
+
+function on_error(app::App, handler::Function)::App
+    return on_error(handler, app)
+end
+
+"""
+    on_notfound(app) do ctx
+        ...
+    end
+
+Register an application-wide 404 handler. The handler may accept `(ctx)`, `(req)`, or `()`.
+"""
+function on_notfound(handler::Function, app::App)::App
+    app.notfound_handler = handler
+    return app
+end
+
+function on_notfound(app::App, handler::Function)::App
+    return on_notfound(handler, app)
+end
+
 function register_route!(app::App, method::AbstractString, path::AbstractString, handler::Function; middleware_scope::Symbol = :exact, force_middleware::Bool = false)::App
     normalized_method = uppercase(String(method))
     normalized_path = normalize_path(path)
@@ -233,18 +265,22 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
     ctx = Context(req; params = base_params)
     middleware_stack = collect_middlewares(app, req.method, path, final_match)
 
-    function final_handler()
-        final_match === nothing && return HTTP.Response(404, "Not Found")
-        if final_match.is_middleware
-            not_found = () -> HTTP.Response(404, "Not Found")
+    try
+        function final_handler()
+            final_match === nothing && return handle_notfound(app, ctx)
+            if final_match.is_middleware
+                not_found = () -> handle_notfound(app, ctx)
+                ctx.params = final_match.params
+                return to_response(invoke_middleware(final_match.handler, ctx, not_found))
+            end
             ctx.params = final_match.params
-            return to_response(invoke_middleware(final_match.handler, ctx, not_found))
+            return to_response(invoke_handler(final_match.handler, ctx; prefer_params = final_match.prefers_params))
         end
-        ctx.params = final_match.params
-        return to_response(invoke_handler(final_match.handler, ctx; prefer_params = final_match.prefers_params))
-    end
 
-    return run_middlewares(middleware_stack, ctx, final_handler)
+        return run_middlewares(middleware_stack, ctx, final_handler)
+    catch err
+        return handle_error(app, ctx, err)
+    end
 end
 
 function get_matcher(app::App, method::AbstractString)::MethodMatcher
@@ -505,6 +541,91 @@ function run_middlewares(middlewares, ctx::Context, final_handler::Function, ind
     ctx.params = middleware.params
     result = to_response(invoke_middleware(middleware.handler, ctx, next_handler))
     ctx.params = original_params
+    return result
+end
+
+function handle_error(app::App, ctx::Context, err)::HTTP.Response
+    if app.error_handler === nothing
+        return default_error_response()
+    end
+
+    try
+        return to_response(invoke_error_handler(app.error_handler, ctx, err))
+    catch
+        return default_error_response()
+    end
+end
+
+function handle_notfound(app::App, ctx::Context)::HTTP.Response
+    if app.notfound_handler === nothing
+        return default_notfound_response()
+    end
+
+    try
+        return to_response(invoke_notfound_handler(app.notfound_handler, ctx))
+    catch
+        return default_notfound_response()
+    end
+end
+
+default_error_response() = HTTP.Response(500, "Internal Server Error")
+default_notfound_response() = HTTP.Response(404, "Not Found")
+
+function invoke_error_handler(handler::Function, ctx::Context, err)
+    try
+        return finalize_error_result(ctx, handler(ctx, err))
+    catch invoke_err
+        if !(invoke_err isa MethodError && invoke_err.f === handler)
+            rethrow(invoke_err)
+        end
+    end
+
+    try
+        return finalize_error_result(ctx, handler(ctx.req, err))
+    catch invoke_err
+        if !(invoke_err isa MethodError && invoke_err.f === handler)
+            rethrow(invoke_err)
+        end
+    end
+
+    return finalize_error_result(ctx, handler(err))
+end
+
+function finalize_error_result(ctx::Context, result)
+    if result === nothing
+        status!(ctx, 500)
+        body!(ctx, "Internal Server Error")
+        return ctx
+    end
+    return result
+end
+
+function invoke_notfound_handler(handler::Function, ctx::Context)
+    try
+        return finalize_notfound_result(ctx, handler(ctx))
+    catch invoke_err
+        if !(invoke_err isa MethodError && invoke_err.f === handler)
+            rethrow(invoke_err)
+        end
+    end
+
+    try
+        return finalize_notfound_result(ctx, handler(ctx.req))
+    catch invoke_err
+        if !(invoke_err isa MethodError && invoke_err.f === handler)
+            rethrow(invoke_err)
+        end
+    end
+
+    return finalize_notfound_result(ctx, handler())
+end
+
+function finalize_notfound_result(ctx::Context, result)
+    if result === nothing
+        status!(ctx, 404)
+        body!(ctx, "Not Found")
+        return ctx
+    end
     return result
 end
 
