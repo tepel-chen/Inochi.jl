@@ -1,10 +1,12 @@
 import Pkg
 
-Pkg.activate(normpath(joinpath(@__DIR__, "..", "..")); io = devnull)
+Pkg.activate(@__DIR__; io = devnull)
+Pkg.develop(path = normpath(joinpath(@__DIR__, "..", "..")); io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using HTTP
 using Inochi
+using Mustache
 
 include(joinpath(@__DIR__, "store.jl"))
 include(joinpath(@__DIR__, "todos.jl"))
@@ -14,13 +16,17 @@ const STORE = TodoStore()
 const app = App()
 const todos_app = build_todos_app(STORE)
 
+app.renderer = Mustache.render
+app.file_renderer = (filepath, data) -> Mustache.render(Mustache.load(filepath), data)
+app.views = joinpath(@__DIR__, "views")
+
 use(app, logger())
 
 get(app, "/static/*", static(joinpath(@__DIR__, "public")))
 route(app, "/todos", todos_app)
 
 get(app, "/") do ctx
-    html(ctx, render_index(STORE))
+    ctx.render("index.mustache", render_index_data(STORE))
 end
 
 get(app, "/about") do
