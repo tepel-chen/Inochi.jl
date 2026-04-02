@@ -97,6 +97,52 @@ function setcookie(ctx::Context, name::AbstractString, value; kwargs...)::Contex
     return ctx
 end
 
+function constant_time_equals(left::AbstractString, right::AbstractString)::Bool
+    ncodeunits(left) == ncodeunits(right) || return false
+    diff = UInt8(0)
+    @inbounds for index in eachindex(codeunits(left), codeunits(right))
+        diff |= codeunits(left)[index] ⊻ codeunits(right)[index]
+    end
+    return diff == 0
+end
+
+function secure_cookie_signature(secret::AbstractString, value::AbstractString)::String
+    return bytes2hex(hmac_sha256(Vector{UInt8}(codeunits(secret)), value))
+end
+
+"""
+    secure_cookie(ctx, name; secret, default = nothing)
+
+Read and verify a signed cookie formatted as `<BASE64>.<HMAC>`.
+"""
+function secure_cookie(ctx::Context, name::AbstractString; secret::AbstractString, default = nothing)
+    raw_value = ctx.cookie(String(name), nothing)
+    raw_value === nothing && return default
+
+    parts = split(raw_value, '.'; limit = 2)
+    length(parts) == 2 || return default
+    payload, signature = parts
+
+    constant_time_equals(signature, secure_cookie_signature(secret, payload)) || return default
+
+    try
+        return String(base64decode(payload))
+    catch
+        return default
+    end
+end
+
+"""
+    set_secure_cookie(ctx, name, value; secret, kwargs...)
+
+Set a signed cookie formatted as `<BASE64>.<HMAC>`.
+"""
+function set_secure_cookie(ctx::Context, name::AbstractString, value; secret::AbstractString, kwargs...)::Context
+    payload = base64encode(String(value))
+    signature = secure_cookie_signature(secret, payload)
+    return setcookie(ctx, name, payload * "." * signature; kwargs...)
+end
+
 function request_content_type(ctx::Context)::String
     raw = strip(HTTP.header(ctx.req, "Content-Type", ""))
     isempty(raw) && return ""

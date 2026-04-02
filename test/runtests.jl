@@ -1,6 +1,7 @@
 using Inochi
 using Test
 using HTTP
+using Base64
 
 @testset "Inochi.jl" begin
     app = App()
@@ -186,6 +187,30 @@ end
     @test String(Inochi.dispatch(app, HTTP.Request("HEAD", "/resource")).body) == "HEAD"
     @test String(Inochi.dispatch(app, HTTP.Request("CONNECT", "/resource")).body) == "CONNECT"
     @test String(Inochi.dispatch(app, HTTP.Request("TRACE", "/resource")).body) == "TRACE"
+end
+
+@testset "App-first Registration" begin
+    app = App()
+
+    get(app, "/inline", _ -> "GET")
+    post(app, "/inline", _ -> "POST")
+    put(app, "/inline", _ -> "PUT")
+    patch(app, "/inline", _ -> "PATCH")
+    delete(app, "/inline", _ -> "DELETE")
+    options(app, "/inline", _ -> "OPTIONS")
+    head(app, "/inline", _ -> "HEAD")
+    connect(app, "/inline", _ -> "CONNECT")
+    trace(app, "/inline", _ -> "TRACE")
+
+    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/inline")).body) == "GET"
+    @test String(Inochi.dispatch(app, HTTP.Request("POST", "/inline")).body) == "POST"
+    @test String(Inochi.dispatch(app, HTTP.Request("PUT", "/inline")).body) == "PUT"
+    @test String(Inochi.dispatch(app, HTTP.Request("PATCH", "/inline")).body) == "PATCH"
+    @test String(Inochi.dispatch(app, HTTP.Request("DELETE", "/inline")).body) == "DELETE"
+    @test String(Inochi.dispatch(app, HTTP.Request("OPTIONS", "/inline")).body) == "OPTIONS"
+    @test String(Inochi.dispatch(app, HTTP.Request("HEAD", "/inline")).body) == "HEAD"
+    @test String(Inochi.dispatch(app, HTTP.Request("CONNECT", "/inline")).body) == "CONNECT"
+    @test String(Inochi.dispatch(app, HTTP.Request("TRACE", "/inline")).body) == "TRACE"
 end
 
 @testset "use Method" begin
@@ -418,6 +443,71 @@ end
     @test any(header -> occursin("HttpOnly", header), set_cookie_headers)
     @test any(header -> occursin("theme=dark", header), set_cookie_headers)
     @test any(header -> occursin("Max-Age=60", header), set_cookie_headers)
+end
+
+@testset "Secure Cookies" begin
+    app = App()
+
+    get(app, "/secure-set") do ctx
+        set_secure_cookie(ctx, "session", "abc123"; secret = "top-secret", path = "/", httponly = true)
+        text(ctx, "ok")
+    end
+
+    get(app, "/secure-read") do ctx
+        text(ctx, string(secure_cookie(ctx, "session"; secret = "top-secret", default = "missing")))
+    end
+
+    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/secure-set"))
+    cookie_header = only(String.(HTTP.headers(response1, "Set-Cookie")))
+    secure_value = first(split(cookie_header, ';'; limit = 2))
+    @test occursin("session=", secure_value)
+
+    req = HTTP.Request("GET", "/secure-read", ["Cookie" => secure_value])
+    response2 = Inochi.dispatch(app, req)
+    @test String(response2.body) == "abc123"
+
+    tampered = secure_value[1:end-1] * (secure_value[end] == '0' ? "1" : "0")
+    bad_req = HTTP.Request("GET", "/secure-read", ["Cookie" => tampered])
+    response3 = Inochi.dispatch(app, bad_req)
+    @test String(response3.body) == "missing"
+end
+
+@testset "Built-in Middleware" begin
+    app = App()
+    log_buffer = IOBuffer()
+
+    use(app, cors())
+    use(app, logger(; io = log_buffer))
+    use(app, "/admin", basicAuth(username = "admin", password = "secret"))
+
+    get(app, "/hello") do ctx
+        text(ctx, "hello")
+    end
+
+    get(app, "/admin/panel") do ctx
+        text(ctx, "ok")
+    end
+
+    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/hello"))
+    @test response1.status == 200
+    @test HTTP.header(response1, "Access-Control-Allow-Origin") == "*"
+
+    response2 = Inochi.dispatch(app, HTTP.Request("OPTIONS", "/hello"))
+    @test response2.status == 204
+    @test HTTP.header(response2, "Access-Control-Allow-Methods") == join(Inochi.SUPPORTED_HTTP_METHODS, ", ")
+
+    response3 = Inochi.dispatch(app, HTTP.Request("GET", "/admin/panel"))
+    @test response3.status == 401
+    @test HTTP.header(response3, "WWW-Authenticate") == "Basic realm=\"Restricted\""
+
+    auth_header = "Basic " * Base64.base64encode("admin:secret")
+    response4 = Inochi.dispatch(app, HTTP.Request("GET", "/admin/panel", ["Authorization" => auth_header]))
+    @test response4.status == 200
+    @test String(response4.body) == "ok"
+
+    logs = String(take!(log_buffer))
+    @test occursin("GET /hello -> 200", logs)
+    @test occursin("GET /admin/panel -> 200", logs)
 end
 
 @testset "Static Files" begin

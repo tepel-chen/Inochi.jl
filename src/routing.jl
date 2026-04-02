@@ -39,8 +39,16 @@ function use(handler::Function, app::App)::App
     return register_route!(app, "ALL", "/*", handler; middleware_scope = :prefix, force_middleware = true)
 end
 
+function use(app::App, handler::Function)::App
+    return use(handler, app)
+end
+
 function use(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "ALL", path, handler; middleware_scope = :prefix, force_middleware = true)
+end
+
+function use(app::App, path::AbstractString, handler::Function)::App
+    return use(handler, app, path)
 end
 
 """
@@ -54,6 +62,10 @@ function get(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "GET", path, handler)
 end
 
+function get(app::App, path::AbstractString, handler::Function)::App
+    return get(handler, app, path)
+end
+
 """
     post(app, path) do ...
         ...
@@ -63,6 +75,10 @@ Register a `POST` route.
 """
 function post(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "POST", path, handler)
+end
+
+function post(app::App, path::AbstractString, handler::Function)::App
+    return post(handler, app, path)
 end
 
 """
@@ -76,6 +92,10 @@ function put(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "PUT", path, handler)
 end
 
+function put(app::App, path::AbstractString, handler::Function)::App
+    return put(handler, app, path)
+end
+
 """
     patch(app, path) do ...
         ...
@@ -85,6 +105,10 @@ Register a `PATCH` route.
 """
 function patch(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "PATCH", path, handler)
+end
+
+function patch(app::App, path::AbstractString, handler::Function)::App
+    return patch(handler, app, path)
 end
 
 """
@@ -98,6 +122,10 @@ function delete(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "DELETE", path, handler)
 end
 
+function delete(app::App, path::AbstractString, handler::Function)::App
+    return delete(handler, app, path)
+end
+
 """
     options(app, path) do ...
         ...
@@ -107,6 +135,10 @@ Register an `OPTIONS` route.
 """
 function options(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "OPTIONS", path, handler)
+end
+
+function options(app::App, path::AbstractString, handler::Function)::App
+    return options(handler, app, path)
 end
 
 """
@@ -120,6 +152,10 @@ function head(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "HEAD", path, handler)
 end
 
+function head(app::App, path::AbstractString, handler::Function)::App
+    return head(handler, app, path)
+end
+
 """
     connect(app, path) do ...
         ...
@@ -131,6 +167,10 @@ function connect(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "CONNECT", path, handler)
 end
 
+function connect(app::App, path::AbstractString, handler::Function)::App
+    return connect(handler, app, path)
+end
+
 """
     trace(app, path) do ...
         ...
@@ -140,6 +180,10 @@ Register a `TRACE` route.
 """
 function trace(handler::Function, app::App, path::AbstractString)::App
     return register_route!(app, "TRACE", path, handler)
+end
+
+function trace(app::App, path::AbstractString, handler::Function)::App
+    return trace(handler, app, path)
 end
 
 function normalize_path(path::AbstractString)::String
