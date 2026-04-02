@@ -17,3 +17,7 @@ Routes:
 - `POST /todos/:id/delete` deletes a todo
 - `GET /static/*` serves assets from `public/`
 - `GET /about` serves a fixed file through `sendFile`
+
+Implementation note:
+
+- the `/todos` routes are mounted as a sub app via `route(app, "/todos", todos_app)`
