@@ -1,6 +1,6 @@
 name = "Inochi"
 uuid = "9a13a925-b8a3-4980-966f-8cdb6f2f6ab3"
-version = "1.0.0-DEV"
+version = "0.1.0"
 authors = ["t-chen <tepelchen501@gmail.com> and contributors"]
 
 [deps]
