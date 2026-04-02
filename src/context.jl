@@ -50,6 +50,10 @@ function Base.getproperty(ctx::Context, name::Symbol)
         return () -> reqform(ctx)
     elseif name == :reqquery
         return () -> reqquery(ctx)
+    elseif name == :render
+        return (filename, data = Dict{String,Any}()) -> render(ctx, filename, data)
+    elseif name == :render_text
+        return (template, data = Dict{String,Any}()) -> render_text(ctx, template, data)
     end
     return getproperty(getfield(ctx, :req), name)
 end
@@ -210,6 +214,48 @@ Return parsed query parameters from the request URL.
 function reqquery(ctx::Context)::Dict{String,String}
     uri = HTTP.URIs.URI(ctx.req.target)
     return Dict{String,String}(HTTP.URIs.queryparams(uri))
+end
+
+function resolve_renderer(ctx::Context)::Function
+    ctx.app.renderer !== nothing || throw(ArgumentError("No app.renderer configured"))
+    return ctx.app.renderer
+end
+
+function resolve_file_renderer(ctx::Context)::Function
+    if ctx.app.file_renderer !== nothing
+        return ctx.app.file_renderer
+    end
+    return (filepath, data) -> resolve_renderer(ctx)(read(filepath, String), data)
+end
+
+function resolve_views_root(ctx::Context)::String
+    if ctx.app.views !== nothing
+        return ctx.app.views
+    end
+    return joinpath(executable_root(), "views")
+end
+
+"""
+    render_text(ctx, template, data = Dict())
+
+Render an inline template with the application's configured renderer and return HTML.
+"""
+function render_text(ctx::Context, template::AbstractString, data = Dict{String,Any}())::Context
+    rendered = resolve_renderer(ctx)(String(template), data)
+    return html(ctx, String(rendered))
+end
+
+"""
+    render(ctx, filename, data = Dict())
+
+Render a template file from `app.views` with the application's configured renderer and return HTML.
+"""
+function render(ctx::Context, filename::AbstractString, data = Dict{String,Any}())::Context
+    template_path = safe_join(resolve_views_root(ctx), filename)
+    template_path === nothing && throw(ArgumentError("Template path escapes app.views"))
+    isfile(template_path) || throw(ArgumentError("Template not found: " * String(filename)))
+    rendered = resolve_file_renderer(ctx)(template_path, data)
+    return html(ctx, String(rendered))
 end
 
 """

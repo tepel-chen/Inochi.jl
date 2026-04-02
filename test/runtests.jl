@@ -367,6 +367,55 @@ end
     @test String(redirect_response.body) == ""
 end
 
+@testset "Rendering" begin
+    app = App()
+    app.renderer = (template, data) -> replace(template, "{{name}}" => string(data["name"]))
+
+    get(app, "/inline") do ctx
+        ctx.render_text("hello {{name}}", Dict("name" => "inochi"))
+    end
+
+    inline_response = Inochi.dispatch(app, HTTP.Request("GET", "/inline"))
+    @test inline_response.status == 200
+    @test String(inline_response.body) == "hello inochi"
+    @test HTTP.header(inline_response, "Content-Type") == "text/html; charset=utf-8"
+
+    mktempdir() do tmpdir
+        app.views = tmpdir
+        write(joinpath(tmpdir, "hello.mustache"), "<h1>{{name}}</h1>")
+
+        get(app, "/file") do ctx
+            ctx.render("hello.mustache", Dict("name" => "Inochi"))
+        end
+
+        file_response = Inochi.dispatch(app, HTTP.Request("GET", "/file"))
+        @test file_response.status == 200
+        @test String(file_response.body) == "<h1>Inochi</h1>"
+
+        bad_ctx = Context(app, HTTP.Request("GET", "/"))
+        @test_throws ArgumentError render(bad_ctx, "../secret.mustache", Dict("name" => "x"))
+    end
+
+    file_renderer_app = App()
+    file_renderer_app.renderer = (_, _) -> error("render_text fallback should not be used")
+    file_renderer_app.file_renderer = (filepath, data) -> begin
+        basename(filepath) == "hello.mustache" || error("unexpected filepath")
+        "<p>" * string(data["name"]) * "</p>"
+    end
+
+    mktempdir() do tmpdir
+        file_renderer_app.views = tmpdir
+        write(joinpath(tmpdir, "hello.mustache"), "ignored")
+        get(file_renderer_app, "/file-renderer") do ctx
+            ctx.render("hello.mustache", Dict("name" => "cached"))
+        end
+
+        response = Inochi.dispatch(file_renderer_app, HTTP.Request("GET", "/file-renderer"))
+        @test response.status == 200
+        @test String(response.body) == "<p>cached</p>"
+    end
+end
+
 @testset "Request Parsers" begin
     app = App()
 

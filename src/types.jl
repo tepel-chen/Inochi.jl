@@ -42,6 +42,9 @@ mutable struct App
     error_handler::Union{Nothing,Function}
     notfound_handler::Union{Nothing,Function}
     secret::Union{Nothing,String}
+    renderer::Union{Nothing,Function}
+    file_renderer::Union{Nothing,Function}
+    views::Union{Nothing,String}
 end
 
 """
@@ -49,4 +52,4 @@ end
 
 Create a new Inochi application.
 """
-App() = App(RouteDefinition[], Dict{String,MethodMatcher}(), true, nothing, nothing, nothing)
+App() = App(RouteDefinition[], Dict{String,MethodMatcher}(), true, nothing, nothing, nothing, nothing, nothing, nothing)
