@@ -27,44 +27,43 @@
       <section class="panel stats">
         <div>
           <span class="stat-label">Total</span>
-          <strong>{{total}}</strong>
+          <strong>{{ total }}</strong>
         </div>
         <div>
           <span class="stat-label">Open</span>
-          <strong>{{pending}}</strong>
+          <strong>{{ pending }}</strong>
         </div>
         <div>
           <span class="stat-label">Done</span>
-          <strong>{{completed}}</strong>
+          <strong>{{ completed }}</strong>
         </div>
         <a class="about-link" href="/about">About this example</a>
       </section>
 
       <section class="panel list-panel">
         <ul class="todo-list">
-          {{#has_todos}}
-          {{#todos}}
-          <li class="{{state_class}}">
-            <div class="todo-main">
-              <form action="/todos/{{id}}/toggle" method="post" class="toggle-form">
-                <button class="toggle-button" type="submit" aria-label="Toggle todo {{id}}">
-                  <span class="checkbox{{#checked}} checked{{/checked}}"></span>
-                </button>
-              </form>
-              <div class="todo-copy">
-                <p class="todo-title">{{title}}</p>
-                <p class="todo-meta">#{{id}} • {{status_text}}</p>
-              </div>
-            </div>
-            <form action="/todos/{{id}}/delete" method="post" class="delete-form">
-              <button class="delete-button" type="submit">Delete</button>
-            </form>
-          </li>
-          {{/todos}}
-          {{/has_todos}}
-          {{^has_todos}}
-          <li class="empty-state">No todos yet. Add your first task.</li>
-          {{/has_todos}}
+          {% if has_todos %}
+            {% for todo in todos %}
+              <li class="{{ todo.state_class }}">
+                <div class="todo-main">
+                  <form action="/todos/{{ todo.id }}/toggle" method="post" class="toggle-form">
+                    <button class="toggle-button" type="submit" aria-label="Toggle todo {{ todo.id }}">
+                      <span class="checkbox{% if todo.checked %} checked{% end %}"></span>
+                    </button>
+                  </form>
+                  <div class="todo-copy">
+                    <p class="todo-title">{{ todo.title }}</p>
+                    <p class="todo-meta">#{{ todo.id }} • {{ todo.status_text }}</p>
+                  </div>
+                </div>
+                <form action="/todos/{{ todo.id }}/delete" method="post" class="delete-form">
+                  <button class="delete-button" type="submit">Delete</button>
+                </form>
+              </li>
+            {% end %}
+          {% else %}
+            <li class="empty-state">No todos yet. Add your first task.</li>
+          {% end %}
         </ul>
       </section>
     </main>

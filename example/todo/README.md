@@ -21,4 +21,4 @@ Routes:
 Implementation note:
 
 - the `/todos` routes are mounted as a sub app via `route(app, "/todos", todos_app)`
-- HTML rendering uses `ctx.render("index.mustache", data)` with `Mustache.jl` configured through `app.renderer`
+- HTML rendering uses `ctx.render("index.iwai", data)` with `IwaiEngine.jl` configured through `app.file_renderer`
