@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>About Inochi Todo</title>
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <p class="eyebrow">Example Notes</p>
+        <h1>About this app</h1>
+        <p class="lede">This page is served with <code>sendFile("public/about.html")</code>. The stylesheet is served with <code>static(joinpath(@__DIR__, "public"))</code>.</p>
+      </section>
+      <section class="panel composer">
+        <p class="todo-meta">Data lives only in memory. Restarting the process resets the list.</p>
+        <p><a class="about-link" href="/">Back to the todo board</a></p>
+      </section>
+    </main>
+  </body>
+</html>

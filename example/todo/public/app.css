@@ -1,0 +1,259 @@
+:root {
+  --bg: #f6efe3;
+  --panel: rgba(255, 252, 246, 0.88);
+  --panel-line: rgba(88, 64, 37, 0.12);
+  --text: #2b1e12;
+  --muted: #755b42;
+  --accent: #d95f37;
+  --accent-strong: #b64621;
+  --success: #1e7f52;
+  --shadow: 0 24px 60px rgba(82, 53, 24, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.7), transparent 34%),
+    linear-gradient(160deg, #f8efe2 0%, #efe4d1 54%, #e5d2b4 100%);
+  color: var(--text);
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+}
+
+.shell {
+  width: min(920px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 48px 0 72px;
+}
+
+.hero {
+  padding: 12px 4px 24px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  color: var(--accent-strong);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2.8rem, 7vw, 5.6rem);
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+}
+
+.lede {
+  max-width: 42rem;
+  margin: 18px 0 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.panel {
+  backdrop-filter: blur(14px);
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+}
+
+.composer,
+.stats,
+.list-panel {
+  margin-top: 18px;
+}
+
+.composer {
+  padding: 20px;
+}
+
+.composer-label,
+.stat-label {
+  display: block;
+  color: var(--muted);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.composer-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+input,
+button {
+  font: inherit;
+}
+
+input {
+  width: 100%;
+  padding: 15px 18px;
+  border: 1px solid rgba(88, 64, 37, 0.15);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+}
+
+button,
+.about-link {
+  border: 0;
+  border-radius: 16px;
+  background: var(--accent);
+  color: #fffaf5;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.composer button {
+  padding: 0 22px;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 700;
+}
+
+button:hover,
+.about-link:hover {
+  transform: translateY(-1px);
+  background: var(--accent-strong);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 16px;
+  padding: 20px;
+  align-items: center;
+}
+
+.stats strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 2rem;
+}
+
+.about-link {
+  justify-self: end;
+  padding: 14px 18px;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-weight: 700;
+}
+
+.list-panel {
+  padding: 14px;
+}
+
+.todo-list {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.todo-item,
+.empty-state {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.todo-item.is-done {
+  background: rgba(226, 244, 234, 0.92);
+}
+
+.todo-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.toggle-form,
+.delete-form {
+  margin: 0;
+}
+
+.toggle-button {
+  padding: 0;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(217, 95, 55, 0.16);
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+}
+
+.checkbox.checked {
+  background: var(--success);
+  border-color: var(--success);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.92);
+}
+
+.todo-title {
+  margin: 0;
+  font-size: 1.12rem;
+}
+
+.todo-meta {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 0.92rem;
+}
+
+.delete-button {
+  padding: 10px 14px;
+  align-self: center;
+}
+
+.empty-state {
+  color: var(--muted);
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100vw - 20px, 920px);
+    padding-top: 28px;
+  }
+
+  .composer-row,
+  .stats {
+    grid-template-columns: 1fr;
+  }
+
+  .about-link {
+    justify-self: stretch;
+    text-align: center;
+  }
+
+  .todo-item,
+  .empty-state {
+    flex-direction: column;
+  }
+}
