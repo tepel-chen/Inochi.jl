@@ -113,6 +113,16 @@ on_error(app) do ctx, err
 end
 ```
 
+## Not Found Handling
+
+Use `on_notfound` to override the default `404 Not Found` response. The handler receives `ctx` and runs when no route matches the request.
+
+```julia
+on_notfound(app) do ctx
+    text(ctx, "missing:" * String(HTTP.URIs.URI(ctx.target).path); status = 404)
+end
+```
+
 ## Mounted Apps
 
 Use `route(app, "/prefix", subapp)` to split larger apps into smaller route groups.

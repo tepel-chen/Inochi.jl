@@ -18,7 +18,7 @@ start
 ```@docs
 use
 route
-get
+Inochi.get
 post
 put
 patch
@@ -51,6 +51,8 @@ setcookie
 secure_cookie
 set_secure_cookie
 set!
+Base.get(ctx::Context, key::AbstractString, default = nothing)
+Base.get(ctx::Context, key::Symbol, default = nothing)
 ```
 
 ## File Helpers

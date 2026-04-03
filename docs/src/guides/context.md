@@ -63,6 +63,25 @@ get(app, "/manual") do ctx
 end
 ```
 
+## Rendering
+
+`ctx.render(filename, data)` renders a file from `app.views`. `ctx.render_text(template, data)` renders an inline template string.
+
+The application provides the rendering functions:
+
+- `app.renderer(template, data)` for string templates
+- `app.file_renderer(filepath, data)` for file-backed templates
+
+If `app.file_renderer` is unset, `ctx.render` falls back to reading the file contents and passing them to `app.renderer`.
+
+IwaiEngine uses `NamedTuple` render contexts. Pass view data as a `NamedTuple`, for example:
+
+```julia
+get(app, "/page") do ctx
+    ctx.render("pages/index.iwai", (title = "Hello", user_name = "tchen"))
+end
+```
+
 ## Request Parsing
 
 Text body:
@@ -127,13 +146,13 @@ token = secure_cookie(ctx, "session")
 set_secure_cookie(ctx, "session", token)
 ```
 
-When a request handler throws, `on_error` can inspect `ctx.backtrace` and render it into the response. This is useful for development debugging and for custom error pages.
-
 ## Request-Local State
 
-Use `set!` and `get` to stash request-local values.
+Use `set!` and `Base.get` to stash request-local values.
 
 ```julia
 set!(ctx, :user_id, 42)
-user_id = get(ctx, :user_id, nothing)
+user_id = Base.get(ctx, :user_id, nothing)
 ```
+
+This is separate from `ctx.params`: `ctx[key]` and `ctx.params[...]` read route parameters, while `set!` stores request-local state for middleware and handlers.

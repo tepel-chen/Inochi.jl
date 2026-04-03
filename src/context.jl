@@ -87,6 +87,11 @@ function Base.getproperty(ctx::Context, name::Symbol)
 end
 
 Base.getindex(ctx::Context, key::AbstractString) = ctx.params[String(key)]
+"""
+    Base.get(ctx, key::AbstractString, default = nothing)
+
+Read a route parameter from `ctx.params`.
+"""
 Base.get(ctx::Context, key::AbstractString, default = nothing) = get(ctx.params, String(key), default)
 
 """
@@ -394,6 +399,11 @@ function set!(ctx::Context, key::Symbol, value)
     return value
 end
 
+"""
+    Base.get(ctx, key::Symbol, default = nothing)
+
+Read request-local state previously stored with `set!`.
+"""
 function Base.get(ctx::Context, key::Symbol, default = nothing)
     return get(ctx.state, key, default)
 end
