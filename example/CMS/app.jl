@@ -18,6 +18,7 @@ include(joinpath(@__DIR__, "admin.jl"))
 
 const STORE = build_seed_store()
 const app = App()
+const auth_app = build_auth_app(STORE)
 const posts_app = build_posts_app(STORE)
 const admin_app = build_admin_app(STORE)
 
@@ -32,7 +33,7 @@ use(app, csrf())
 use(app, attach_current_user(STORE))
 
 get(app, "/static/*", static(joinpath(@__DIR__, "public")))
-register_auth_routes!(app, STORE)
+route(app, "/", auth_app)
 route(app, "/post", posts_app)
 route(app, "/admin", admin_app)
 

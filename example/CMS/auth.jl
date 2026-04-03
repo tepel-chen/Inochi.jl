@@ -32,7 +32,9 @@ function require_admin()
     end
 end
 
-function register_auth_routes!(app::App, store::CMSStore)::App
+function build_auth_app(store::CMSStore)::App
+    app = App()
+
     get(app, "/login") do ctx
         ctx.render("auth/login.iwai", auth_view(ctx, "login"))
     end
@@ -68,5 +70,11 @@ function register_auth_routes!(app::App, store::CMSStore)::App
         redirect(ctx, "/")
     end
 
+    return app
+end
+
+function register_auth_routes!(app::App, store::CMSStore)::App
+    auth_app = build_auth_app(store)
+    route(app, "/", auth_app)
     return app
 end
