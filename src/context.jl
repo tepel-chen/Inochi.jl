@@ -13,10 +13,11 @@ mutable struct Context
     cookies_out::Vector{HTTP.Cookies.Cookie}
     state::Dict{Symbol,Any}
     varies_on_cookie::Bool
+    next_handler::Union{Nothing,Function}
 end
 
 function Context(app::App, req::HTTP.Request; params::RouteParams = RouteParams())
-    return Context(app, req, params, 200, Dict{String,String}(), "", HTTP.Cookies.Cookie[], Dict{Symbol,Any}(), false)
+    return Context(app, req, params, 200, Dict{String,String}(), "", HTTP.Cookies.Cookie[], Dict{Symbol,Any}(), false, nothing)
 end
 
 struct CookieAccessor
@@ -38,7 +39,7 @@ function (accessor::CookieAccessor)(key::AbstractString, default = nothing)
 end
 
 function Base.getproperty(ctx::Context, name::Symbol)
-    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state, :varies_on_cookie)
+    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state, :varies_on_cookie, :next_handler)
         return getfield(ctx, name)
     elseif name == :cookie
         return CookieAccessor(ctx)
@@ -57,6 +58,12 @@ function Base.getproperty(ctx::Context, name::Symbol)
     elseif name == :reqfile
         return function (; name = nothing)
             return reqfile(ctx; name = name)
+        end
+    elseif name == :next
+        return function ()
+            next_handler = getfield(ctx, :next_handler)
+            next_handler === nothing && throw(ArgumentError("next() is only available inside middleware"))
+            return next_handler()
         end
     elseif name == :render
         return (filename, data = Dict{String,Any}()) -> render(ctx, filename, data)

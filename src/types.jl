@@ -9,7 +9,6 @@ struct RouteDefinition
     method::String
     path::String
     handler::Function
-    prefers_params::Bool
     is_middleware::Bool
     middleware_scope::Symbol
 end
@@ -20,15 +19,12 @@ struct DynamicRoute
     param_names::Vector{String}
     param_capture_indexes::Vector{Int}
     is_middleware::Bool
-    middleware_scope::Symbol
 end
 
 struct StaticRoute
     handler::Function
     path::String
-    prefers_params::Bool
     is_middleware::Bool
-    middleware_scope::Symbol
 end
 
 struct MethodMatcher

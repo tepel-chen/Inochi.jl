@@ -67,7 +67,7 @@ function csrf(; cookie_name::AbstractString = CSRF_COOKIE_NAME, httponly::Bool =
     resolved_cookie_name = String(cookie_name)
     resolved_samesite = resolve_samesite(samesite)
 
-    return function (ctx::Context, next::Function)
+    return function (ctx::Context)
         token = ctx.cookie(resolved_cookie_name, nothing)
         if !(token isa AbstractString) || isempty(token)
             token = generate_csrf_token()
@@ -78,12 +78,12 @@ function csrf(; cookie_name::AbstractString = CSRF_COOKIE_NAME, httponly::Bool =
         set!(ctx, :csrf_token, token)
 
         if uppercase(ctx.method) in SAFE_HTTP_METHODS
-            return next()
+            return ctx.next()
         end
 
         request_token = csrf_request_token(ctx)
         if request_token isa AbstractString && constant_time_equals(String(request_token), token)
-            return next()
+            return ctx.next()
         end
 
         status!(ctx, 403)

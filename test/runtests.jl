@@ -9,7 +9,7 @@ const HTTP_DATE_PATTERN = r"^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} (Jan|Feb|Mar|A
 @testset "Inochi.jl" begin
     app = App()
 
-    get(app, "/") do
+    get(app, "/") do ctx
         "hello"
     end
 
@@ -44,7 +44,7 @@ end
 @testset "Server Header" begin
     app = App()
 
-    get(app, "/raw") do
+    get(app, "/raw") do ctx
         HTTP.Response(201, "created")
     end
 
@@ -63,11 +63,11 @@ end
         params["id"]
     end
 
-    get(app, "/users/:id/comments/:comment_id") do _, params
-        string(params["id"], ":", params["comment_id"])
+    get(app, "/users/:id/comments/:comment_id") do ctx
+        string(ctx.params["id"], ":", ctx.params["comment_id"])
     end
 
-    get(app, "/users/me") do
+    get(app, "/users/me") do ctx
         "me"
     end
 
@@ -100,15 +100,15 @@ end
 @testset "Benchmark Route Set" begin
     app = App()
 
-    get(app, "/user") do
+    get(app, "/user") do ctx
         "ok"
     end
 
-    get(app, "/user/comments") do
+    get(app, "/user/comments") do ctx
         "ok"
     end
 
-    get(app, "/user/avatar") do
+    get(app, "/user/avatar") do ctx
         "ok"
     end
 
@@ -136,11 +136,11 @@ end
         params["location"]
     end
 
-    get(app, "/status") do
+    get(app, "/status") do ctx
         "ok"
     end
 
-    get(app, "/very/deeply/nested/route/hello/there") do
+    get(app, "/very/deeply/nested/route/hello/there") do ctx
         "ok"
     end
 
@@ -166,39 +166,39 @@ end
 @testset "HTTP Methods" begin
     app = App()
 
-    get(app, "/resource") do
+    get(app, "/resource") do ctx
         "GET"
     end
 
-    post(app, "/resource") do
+    post(app, "/resource") do ctx
         "POST"
     end
 
-    put(app, "/resource") do
+    put(app, "/resource") do ctx
         "PUT"
     end
 
-    patch(app, "/resource") do
+    patch(app, "/resource") do ctx
         "PATCH"
     end
 
-    delete(app, "/resource") do
+    delete(app, "/resource") do ctx
         "DELETE"
     end
 
-    options(app, "/resource") do
+    options(app, "/resource") do ctx
         "OPTIONS"
     end
 
-    head(app, "/resource") do
+    head(app, "/resource") do ctx
         "HEAD"
     end
 
-    connect(app, "/resource") do
+    connect(app, "/resource") do ctx
         "CONNECT"
     end
 
-    trace(app, "/resource") do
+    trace(app, "/resource") do ctx
         "TRACE"
     end
 
@@ -266,7 +266,7 @@ end
         string(get(params, "dir", "_"), "/", get(params, "name", "_"))
     end
 
-    get(app, "/status?") do
+    get(app, "/status?") do ctx
         "status"
     end
 
@@ -285,18 +285,18 @@ end
     app = App()
     events = String[]
 
-    get(app, "/admin/*") do req, params, next
-        push!(events, "auth:" * String(HTTP.URIs.URI(req.target).path))
-        push!(events, "tail:" * params["*"])
-        next()
+    use(app, "/admin/*") do ctx
+        push!(events, "auth:" * String(HTTP.URIs.URI(ctx.target).path))
+        push!(events, "tail:" * ctx.params["*"])
+        ctx.next()
     end
 
-    get(app, "/admin/settings") do
+    get(app, "/admin/settings") do ctx
         push!(events, "settings")
         "ok"
     end
 
-    get(app, "/stop/*") do
+    get(app, "/stop/*") do ctx
         "blocked"
     end
 
@@ -318,17 +318,17 @@ end
     app = App()
     events = String[]
 
-    use(app) do ctx, next
+    use(app) do ctx
         push!(events, "global:" * String(HTTP.URIs.URI(ctx.target).path))
-        next()
+        ctx.next()
     end
 
-    use(app, "/api") do ctx, next
+    use(app, "/api") do ctx
         push!(events, "api:" * get(ctx.params, "*", ""))
-        next()
+        ctx.next()
     end
 
-    get(app, "/api/users") do
+    get(app, "/api/users") do ctx
         "users"
     end
 
@@ -342,11 +342,11 @@ end
     @test events[end] == "global:/other"
 
     bad_app = App()
-    use(bad_app) do _, next
-        next()
-        next()
+    use(bad_app) do ctx
+        ctx.next()
+        ctx.next()
     end
-    get(bad_app, "/boom") do
+    get(bad_app, "/boom") do ctx
         "ok"
     end
     response3 = Inochi.dispatch(bad_app, HTTP.Request("GET", "/boom"))
@@ -362,9 +362,9 @@ end
         text(ctx, "id=" * ctx.params["id"]; status = 201)
     end
 
-    use(app, "/ctx/*") do ctx, next
+    use(app, "/ctx/*") do ctx
         header!(ctx, "X-Middleware", "on")
-        next()
+        ctx.next()
     end
 
     get(app, "/ctx/html") do ctx
@@ -688,11 +688,11 @@ end
         text(ctx, "hello")
     end
 
-    get(app, "/bytes") do
+    get(app, "/bytes") do ctx
         HTTP.Response(200, UInt8[0x68, 0x69])
     end
 
-    get(app, "/buffer") do
+    get(app, "/buffer") do ctx
         io = IOBuffer()
         write(io, "buffered")
         HTTP.Response(200, take!(io))
@@ -789,7 +789,7 @@ end
 @testset "Error Handling" begin
     app = App()
 
-    get(app, "/boom") do
+    get(app, "/boom") do ctx
         error("boom")
     end
 
@@ -799,11 +799,11 @@ end
 
     custom_app = App()
 
-    use(custom_app, "/fail") do _, next
-        next()
+    use(custom_app, "/fail") do ctx
+        ctx.next()
     end
 
-    get(custom_app, "/fail") do
+    get(custom_app, "/fail") do ctx
         throw(ArgumentError("bad request"))
     end
 
@@ -841,12 +841,12 @@ end
     public = App()
     events = String[]
 
-    use(admin) do ctx, next
+    use(admin) do ctx
         push!(events, "mw:" * String(HTTP.URIs.URI(ctx.target).path))
-        next()
+        ctx.next()
     end
 
-    get(admin, "/") do
+    get(admin, "/") do ctx
         "admin-root"
     end
 
@@ -858,11 +858,11 @@ end
         get(ctx.params, "name", "index")
     end
 
-    get(public, "/") do
+    get(public, "/") do ctx
         "public-root"
     end
 
-    get(public, "/info") do
+    get(public, "/info") do ctx
         "public-info"
     end
 
@@ -947,7 +947,7 @@ end
         sendFile(ctx, "fixtures/sample.txt")
     end
 
-    get(app, "/blocked") do
+    get(app, "/blocked") do ctx
         sendFile("../Project.toml")
     end
 

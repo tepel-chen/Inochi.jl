@@ -33,7 +33,7 @@ Security behavior:
 Use `sendFile(path)` inside a route to return one file directly.
 
 ```julia
-get(app, "/about") do
+get(app, "/about") do ctx
     sendFile("public/about.html")
 end
 ```

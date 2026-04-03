@@ -5,8 +5,8 @@ Create middleware that adds an `ETag` header for string and byte responses and
 returns `304 Not Modified` when `If-None-Match` matches.
 """
 function etag()
-    return function (ctx::Context, next::Function)
-        response = next()
+    return function (ctx::Context)
+        response = ctx.next()
         existing = HTTP.header(response, ETAG_HEADER_NAME, "")
 
         if isempty(existing)

@@ -8,7 +8,7 @@ function cors(; origin::AbstractString = "*", methods = nothing, headers::Abstra
     exposed_headers = expose_headers === nothing ? nothing : string(expose_headers)
     max_age_value = max_age === nothing ? nothing : string(max_age)
 
-    return function (ctx::Context, next::Function)
+    return function (ctx::Context)
         header!(ctx, "Access-Control-Allow-Origin", origin)
         header!(ctx, "Access-Control-Allow-Methods", allowed_methods)
         header!(ctx, "Access-Control-Allow-Headers", headers)
@@ -22,6 +22,6 @@ function cors(; origin::AbstractString = "*", methods = nothing, headers::Abstra
             return ctx
         end
 
-        return next()
+        return ctx.next()
     end
 end

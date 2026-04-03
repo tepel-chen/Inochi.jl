@@ -15,7 +15,7 @@ const SUPPORTED_HTTP_METHODS = (
         ...
     end
 
-Register an application-wide error handler. The handler may accept `(ctx, err)`, `(req, err)`, or `(err)`.
+Register an application-wide error handler. The handler receives `ctx` and `err`.
 """
 function on_error(handler::Function, app::App)::App
     app.error_handler = handler
@@ -31,7 +31,7 @@ end
         ...
     end
 
-Register an application-wide 404 handler. The handler may accept `(ctx)`, `(req)`, or `()`.
+Register an application-wide 404 handler. The handler receives `ctx`.
 """
 function on_notfound(handler::Function, app::App)::App
     app.notfound_handler = handler
@@ -45,11 +45,10 @@ end
 function register_route!(app::App, method::AbstractString, path::AbstractString, handler::Function; middleware_scope::Symbol = :exact, force_middleware::Bool = false)::App
     normalized_method = uppercase(String(method))
     normalized_path = normalize_path(path)
-    prefers_params = occursin(':', normalized_path)
-    is_middleware = force_middleware || handler_supports_next(handler)
+    is_middleware = force_middleware
 
     for expanded_path in expand_optional_paths(normalized_path)
-        push!(app.routes, RouteDefinition(normalized_method, expanded_path, handler, prefers_params, is_middleware, middleware_scope))
+        push!(app.routes, RouteDefinition(normalized_method, expanded_path, handler, is_middleware, middleware_scope))
     end
 
     app.dirty = true
@@ -72,7 +71,6 @@ function route(app::App, prefix::AbstractString, subapp::App)::App
                 route_def.method,
                 mounted_path,
                 route_def.handler,
-                route_def.prefers_params,
                 route_def.is_middleware,
                 route_def.middleware_scope,
             ),
@@ -312,10 +310,16 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
             if final_match.is_middleware
                 not_found = () -> handle_notfound(app, ctx)
                 ctx.params = final_match.params
-                return to_response(invoke_middleware(final_match.handler, ctx, not_found), ctx)
+                original_next = ctx.next_handler
+                ctx.next_handler = not_found
+                try
+                    return to_response(final_match.handler(ctx), ctx)
+                finally
+                    ctx.next_handler = original_next
+                end
             end
             ctx.params = final_match.params
-            return to_response(invoke_handler(final_match.handler, ctx; prefer_params = final_match.prefers_params), ctx)
+            return to_response(final_match.handler(ctx), ctx)
         end
 
         return run_middlewares(middleware_stack, ctx, final_handler)
@@ -334,7 +338,7 @@ const EMPTY_METHOD_MATCHER = MethodMatcher(nothing, Dict{Int,DynamicRoute}(), Di
 function match_final_route(matcher::MethodMatcher, path::String)
     static_route = get(matcher.static_map, path, nothing)
     if static_route !== nothing
-        return (; handler = static_route.handler, path = static_route.path, params = RouteParams(), prefers_params = static_route.prefers_params, is_middleware = static_route.is_middleware, middleware_scope = static_route.middleware_scope)
+        return (; handler = static_route.handler, path = static_route.path, params = RouteParams(), is_middleware = static_route.is_middleware)
     end
 
     matcher.regex === nothing && return nothing
@@ -346,7 +350,7 @@ function match_final_route(matcher::MethodMatcher, path::String)
 
     route = matcher.route_lookup[route_index]
     params = extract_params(matched, route)
-    return (; handler = route.handler, path = route.path, params = params, prefers_params = true, is_middleware = route.is_middleware, middleware_scope = route.middleware_scope)
+    return (; handler = route.handler, path = route.path, params = params, is_middleware = route.is_middleware)
 end
 
 function compile_routes!(app::App)::App
@@ -356,7 +360,7 @@ function compile_routes!(app::App)::App
             for method in SUPPORTED_HTTP_METHODS
                 push!(
                     get!(grouped_routes, method, RouteDefinition[]),
-                    RouteDefinition(method, route.path, route.handler, route.prefers_params, route.is_middleware, route.middleware_scope),
+                    RouteDefinition(method, route.path, route.handler, route.is_middleware, route.middleware_scope),
                 )
             end
         else
@@ -378,18 +382,16 @@ function build_method_matcher(routes::Vector{RouteDefinition})::MethodMatcher
     route_lookup = Dict{Int,DynamicRoute}()
     dynamic_patterns = String[]
     capture_index = 0
-    route_index = 0
 
     for route in routes
         route.is_middleware && route.middleware_scope == :prefix && continue
 
         parsed = parse_route_pattern(route.path)
         if parsed.static
-            static_map[route.path] = StaticRoute(route.handler, route.path, route.prefers_params, route.is_middleware, route.middleware_scope)
+            static_map[route.path] = StaticRoute(route.handler, route.path, route.is_middleware)
             continue
         end
 
-        route_index += 1
         sentinel_index = capture_index + 1
         capture_index += 1
 
@@ -399,7 +401,7 @@ function build_method_matcher(routes::Vector{RouteDefinition})::MethodMatcher
             push!(param_capture_indexes, capture_index)
         end
 
-        route_lookup[sentinel_index] = DynamicRoute(route.handler, route.path, parsed.param_names, param_capture_indexes, route.is_middleware, route.middleware_scope)
+        route_lookup[sentinel_index] = DynamicRoute(route.handler, route.path, parsed.param_names, param_capture_indexes, route.is_middleware)
         push!(dynamic_patterns, "(?:" * "()" * parsed.pattern * ")")
     end
 
@@ -459,115 +461,6 @@ function extract_params(matched::RegexMatch, route::DynamicRoute)::RouteParams
     return params
 end
 
-function invoke_handler(handler::Function, ctx::Context; prefer_params::Bool = false)
-    try
-        return handler(ctx)
-    catch err
-        if !(err isa MethodError && err.f === handler)
-            rethrow(err)
-        end
-    end
-
-    req = ctx.req
-    params = ctx.params
-
-    try
-        return handler(req, params)
-    catch err
-        if !(err isa MethodError && err.f === handler)
-            rethrow(err)
-        end
-    end
-
-    if prefer_params
-        try
-            return handler(params)
-        catch err
-            if !(err isa MethodError && err.f === handler)
-                rethrow(err)
-            end
-        end
-
-        try
-            return handler(req)
-        catch err
-            if !(err isa MethodError && err.f === handler)
-                rethrow(err)
-            end
-        end
-    else
-        try
-            return handler(req)
-        catch err
-            if !(err isa MethodError && err.f === handler)
-                rethrow(err)
-            end
-        end
-
-        if !isempty(params)
-            try
-                return handler(params)
-            catch err
-                if !(err isa MethodError && err.f === handler)
-                    rethrow(err)
-                end
-            end
-        end
-    end
-
-    result = handler()
-    if result === nothing
-        return ctx
-    end
-    return result
-end
-
-function invoke_middleware(handler::Function, ctx::Context, next::Function)
-    try
-        return handler(ctx, next)
-    catch err
-        if !(err isa MethodError && err.f === handler)
-            rethrow(err)
-        end
-    end
-
-    req = ctx.req
-    params = ctx.params
-
-    try
-        return handler(req, params, next)
-    catch err
-        if !(err isa MethodError && err.f === handler)
-            rethrow(err)
-        end
-    end
-
-    try
-        return handler(req, next)
-    catch err
-        if !(err isa MethodError && err.f === handler)
-            rethrow(err)
-        end
-    end
-
-    try
-        return handler(params, next)
-    catch err
-        if !(err isa MethodError && err.f === handler)
-            rethrow(err)
-        end
-    end
-
-    return invoke_handler(handler, ctx; prefer_params = true)
-end
-
-function handler_supports_next(handler::Function)::Bool
-    for method in methods(handler)
-        method.nargs >= 4 && return true
-    end
-    return false
-end
-
 function run_middlewares(middlewares, ctx::Context, final_handler::Function, index::Int = 1)::HTTP.Response
     if index > length(middlewares)
         return final_handler()
@@ -581,10 +474,15 @@ function run_middlewares(middlewares, ctx::Context, final_handler::Function, ind
         return run_middlewares(middlewares, ctx, final_handler, index + 1)
     end
     original_params = ctx.params
+    original_next = ctx.next_handler
     ctx.params = middleware.params
-    result = to_response(invoke_middleware(middleware.handler, ctx, next_handler), ctx)
-    ctx.params = original_params
-    return result
+    ctx.next_handler = next_handler
+    try
+        return to_response(middleware.handler(ctx), ctx)
+    finally
+        ctx.next_handler = original_next
+        ctx.params = original_params
+    end
 end
 
 function handle_error(app::App, ctx::Context, err)::HTTP.Response
@@ -593,7 +491,13 @@ function handle_error(app::App, ctx::Context, err)::HTTP.Response
     end
 
     try
-        return to_response(invoke_error_handler(app.error_handler, ctx, err), ctx)
+        result = app.error_handler(ctx, err)
+        if result === nothing
+            status!(ctx, 500)
+            body!(ctx, "Internal Server Error")
+            return to_response(ctx)
+        end
+        return to_response(result, ctx)
     catch
         return default_error_response()
     end
@@ -605,7 +509,13 @@ function handle_notfound(app::App, ctx::Context)::HTTP.Response
     end
 
     try
-        return to_response(invoke_notfound_handler(app.notfound_handler, ctx), ctx)
+        result = app.notfound_handler(ctx)
+        if result === nothing
+            status!(ctx, 404)
+            body!(ctx, "Not Found")
+            return to_response(ctx)
+        end
+        return to_response(result, ctx)
     catch
         return default_notfound_response()
     end
@@ -613,64 +523,6 @@ end
 
 default_error_response() = apply_default_headers(HTTP.Response(500, "Internal Server Error"))
 default_notfound_response() = apply_default_headers(HTTP.Response(404, "Not Found"))
-
-function invoke_error_handler(handler::Function, ctx::Context, err)
-    try
-        return finalize_error_result(ctx, handler(ctx, err))
-    catch invoke_err
-        if !(invoke_err isa MethodError && invoke_err.f === handler)
-            rethrow(invoke_err)
-        end
-    end
-
-    try
-        return finalize_error_result(ctx, handler(ctx.req, err))
-    catch invoke_err
-        if !(invoke_err isa MethodError && invoke_err.f === handler)
-            rethrow(invoke_err)
-        end
-    end
-
-    return finalize_error_result(ctx, handler(err))
-end
-
-function finalize_error_result(ctx::Context, result)
-    if result === nothing
-        status!(ctx, 500)
-        body!(ctx, "Internal Server Error")
-        return ctx
-    end
-    return result
-end
-
-function invoke_notfound_handler(handler::Function, ctx::Context)
-    try
-        return finalize_notfound_result(ctx, handler(ctx))
-    catch invoke_err
-        if !(invoke_err isa MethodError && invoke_err.f === handler)
-            rethrow(invoke_err)
-        end
-    end
-
-    try
-        return finalize_notfound_result(ctx, handler(ctx.req))
-    catch invoke_err
-        if !(invoke_err isa MethodError && invoke_err.f === handler)
-            rethrow(invoke_err)
-        end
-    end
-
-    return finalize_notfound_result(ctx, handler())
-end
-
-function finalize_notfound_result(ctx::Context, result)
-    if result === nothing
-        status!(ctx, 404)
-        body!(ctx, "Not Found")
-        return ctx
-    end
-    return result
-end
 
 function collect_middlewares(app::App, method::AbstractString, path::String, final_match)
     middlewares = NamedTuple[]
