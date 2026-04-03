@@ -52,6 +52,12 @@ function Base.getproperty(ctx::Context, name::Symbol)
         return () -> reqform(ctx)
     elseif name == :reqquery
         return () -> reqquery(ctx)
+    elseif name == :reqmultipart
+        return () -> reqmultipart(ctx)
+    elseif name == :reqfile
+        return function (; name = nothing)
+            return reqfile(ctx; name = name)
+        end
     elseif name == :render
         return (filename, data = Dict{String,Any}()) -> render(ctx, filename, data)
     elseif name == :render_text
@@ -185,10 +191,14 @@ function require_content_type(ctx::Context, expected::AbstractString, descriptio
 end
 
 function request_body_text(ctx::Context)::String
+    return String(request_body_bytes(ctx))
+end
+
+function request_body_bytes(ctx::Context)::Vector{UInt8}
     max_content_size = app_config_int(ctx.app, "max_content_size", DEFAULT_MAX_CONTENT_SIZE)
     body_bytes = Vector{UInt8}(ctx.req.body)
     length(body_bytes) <= max_content_size || throw(ArgumentError("Request body exceeds max_content_size"))
-    return String(body_bytes)
+    return body_bytes
 end
 
 """
@@ -212,6 +222,36 @@ function reqjson(ctx::Context)
     valid = actual == "application/json" || endswith(actual, "+json")
     valid || throw(ArgumentError("Expected Content-Type application/json for reqjson, got " * (isempty(actual) ? "<missing>" : actual)))
     return JSON.parse(request_body_text(ctx))
+end
+
+"""
+    reqmultipart(ctx)
+
+Parse the request body as multipart form data and return the parsed parts.
+"""
+function reqmultipart(ctx::Context)::Vector{HTTP.Multipart}
+    require_content_type(ctx, "multipart/form-data", "reqmultipart")
+    request_body_bytes(ctx)
+    parts = HTTP.parse_multipart_form(ctx.req)
+    parts === nothing && throw(ArgumentError("Failed to parse multipart/form-data request"))
+    return parts
+end
+
+"""
+    reqfile(ctx; name = nothing)
+
+Return the first uploaded multipart file part, optionally matching a field name.
+"""
+function reqfile(ctx::Context; name::Union{Nothing,AbstractString} = nothing)
+    parts = reqmultipart(ctx)
+    target_name = name === nothing ? nothing : String(name)
+    for part in parts
+        part.filename === nothing && continue
+        if target_name === nothing || part.name == target_name
+            return part
+        end
+    end
+    return nothing
 end
 
 """

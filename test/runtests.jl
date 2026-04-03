@@ -491,6 +491,43 @@ end
 
     charset_json_ctx = Context(parser_app, HTTP.Request("POST", "/json", ["Content-Type" => "application/json; charset=utf-8"], "{\"name\":\"bob\",\"count\":4}"))
     @test reqjson(charset_json_ctx)["name"] == "bob"
+
+    multipart_body = join([
+        "--boundary123",
+        "Content-Disposition: form-data; name=\"title\"",
+        "",
+        "hello",
+        "--boundary123",
+        "Content-Disposition: form-data; name=\"image\"; filename=\"pixel.jpg\"",
+        "Content-Type: image/jpeg",
+        "",
+        "binary-image-data",
+        "--boundary123--",
+        "",
+    ], "\r\n")
+    multipart_req = HTTP.Request(
+        "POST",
+        "/upload",
+        [
+            "Content-Type" => "multipart/form-data; boundary=boundary123",
+            "Content-Length" => string(length(codeunits(multipart_body))),
+        ],
+        Vector{UInt8}(multipart_body),
+    )
+    multipart_ctx = Context(parser_app, multipart_req)
+    multipart_parts = reqmultipart(multipart_ctx)
+    @test length(multipart_parts) == 2
+    @test multipart_parts[1].name == "title"
+    @test String(read(multipart_parts[1].data)) == "hello"
+    file_part = reqfile(multipart_ctx; name = "image")
+    @test file_part !== nothing
+    @test file_part.filename == "pixel.jpg"
+    @test file_part.name == "image"
+    @test file_part.contenttype == "image/jpeg"
+    @test reqfile(multipart_ctx; name = "missing") === nothing
+    ctx_file_part = multipart_ctx.reqfile(name = "image")
+    @test ctx_file_part !== nothing
+    @test ctx_file_part.filename == "pixel.jpg"
 end
 
 @testset "Cookies" begin
