@@ -73,34 +73,34 @@ Use `use` for middleware.
 Global middleware:
 
 ```julia
-use(app) do ctx, next
+use(app) do ctx
     header!(ctx, "X-Powered-By", "Inochi")
-    next()
+    ctx.next()
 end
 ```
 
 Prefix middleware:
 
 ```julia
-use(app, "/admin") do ctx, next
+use(app, "/admin") do ctx
     header!(ctx, "X-Area", "admin")
-    next()
+    ctx.next()
 end
 ```
 
 Wildcard middleware also works on method-specific routes:
 
 ```julia
-get(app, "/admin/*") do ctx, next
-    next()
+get(app, "/admin/*") do ctx
+    ctx.next()
 end
 ```
 
 ## Middleware Rules
 
-- Middleware receives `ctx, next`.
-- Call `next()` to continue to the next middleware or final route.
-- A middleware may call `next()` only once.
+- Middleware receives `ctx`.
+- Call `ctx.next()` to continue to the next middleware or final route.
+- A middleware may call `ctx.next()` only once.
 - If middleware does not call `next()`, its own return value becomes the response.
 
 ## Error Handling
