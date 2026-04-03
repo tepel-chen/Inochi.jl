@@ -27,6 +27,12 @@ app.renderer = (template, data) -> IwaiEngine.parse(template)(data)
 app.views = joinpath(@__DIR__, "views")
 app.file_renderer = (filepath, data) -> IwaiEngine.load(filepath; root = app.views)(data)
 
+on_error(app) do ctx, err
+    bt = ctx.backtrace
+    stacktrace_text = bt === nothing ? sprint(showerror, err) : sprint(showerror, err, bt)
+    return text(ctx, stacktrace_text; status = 500)
+end
+
 use(app, logger())
 use(app, csp_middleware())
 use(app, csrf())

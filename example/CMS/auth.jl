@@ -1,5 +1,5 @@
 function attach_current_user(store::CMSStore)
-    return function(ctx, next)
+    return function(ctx)
         session = secure_cookie(ctx, "session"; default = nothing)
         if session !== nothing
             user_id = try
@@ -12,23 +12,23 @@ function attach_current_user(store::CMSStore)
                 user !== nothing && set!(ctx, :current_user, user)
             end
         end
-        return next()
+        return ctx.next()
     end
 end
 
 function require_login()
-    return function(ctx, next)
+    return function(ctx)
         current_user(ctx) === nothing && return redirect(ctx, "/login"; status = 303)
-        return next()
+        return ctx.next()
     end
 end
 
 function require_admin()
-    return function(ctx, next)
+    return function(ctx)
         user = current_user(ctx)
         user === nothing && return redirect(ctx, "/login"; status = 303)
         is_admin(user) || return text(ctx, "Forbidden"; status = 403)
-        return next()
+        return ctx.next()
     end
 end
 

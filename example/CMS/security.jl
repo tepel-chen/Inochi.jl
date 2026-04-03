@@ -6,7 +6,7 @@ function generate_csp_nonce()::String
 end
 
 function csp_middleware()
-    return function (ctx, next)
+    return function (ctx)
         nonce = generate_csp_nonce()
         set!(ctx, :csp_nonce, nonce)
 
@@ -26,6 +26,6 @@ function csp_middleware()
         header!(ctx, "Referrer-Policy", "strict-origin-when-cross-origin")
         header!(ctx, "X-Content-Type-Options", "nosniff")
         header!(ctx, "X-Frame-Options", "DENY")
-        return next()
+        return ctx.next()
     end
 end
