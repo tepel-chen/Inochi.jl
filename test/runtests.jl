@@ -526,7 +526,7 @@ end
 
 @testset "Secure Cookies" begin
     app = App()
-    app.secret = "top-secret"
+    app.config["secret"] = "top-secret"
 
     get(app, "/secure-set") do ctx
         set_secure_cookie(ctx, "session", "abc123"; path = "/", httponly = true)
@@ -552,6 +552,28 @@ end
     response3 = Inochi.dispatch(app, bad_req)
     @test String(response3.body) == "missing"
     @test HTTP.header(response3, "Vary") == "Origin, Cookie"
+end
+
+@testset "App Config" begin
+    app = App()
+    @test app.config["max_content_size"] == 4 * 1024 * 1024
+
+    app.config["secret"] = "s3cr3t"
+    @test app.config["secret"] == "s3cr3t"
+
+    body_limited = App()
+    body_limited.config["max_content_size"] = 4
+
+    post(body_limited, "/json") do ctx
+        json(ctx, reqjson(ctx))
+    end
+
+    response = Inochi.dispatch(
+        body_limited,
+        HTTP.Request("POST", "/json", ["Content-Type" => "application/json"], "{\"hello\":1}"),
+    )
+    @test response.status == 500
+    @test String(response.body) == "Internal Server Error"
 end
 
 @testset "Built-in Middleware" begin

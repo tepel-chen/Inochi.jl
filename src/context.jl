@@ -104,6 +104,17 @@ function setcookie(ctx::Context, name::AbstractString, value; kwargs...)::Contex
     return ctx
 end
 
+function app_config_string(app::App, key::AbstractString)::Union{Nothing,String}
+    value = get(app.config, String(key), nothing)
+    return value isa String ? value : nothing
+end
+
+function app_config_int(app::App, key::AbstractString, default::Integer)::Int
+    value = get(app.config, String(key), Int(default))
+    value isa Int || throw(ArgumentError("app.config[$(repr(String(key)))] must be an Int"))
+    return value
+end
+
 function constant_time_equals(left::AbstractString, right::AbstractString)::Bool
     ncodeunits(left) == ncodeunits(right) || return false
     diff = UInt8(0)
@@ -154,10 +165,10 @@ end
 function resolve_cookie_secret(ctx::Context, secret)::String
     if secret !== nothing
         return String(secret)
-    elseif ctx.app.secret !== nothing
-        return ctx.app.secret
+    elseif (configured = app_config_string(ctx.app, "secret")) !== nothing
+        return configured
     else
-        throw(ArgumentError("No app.secret configured for secure cookies"))
+        throw(ArgumentError("No app.config[\"secret\"] configured for secure cookies"))
     end
 end
 
@@ -173,7 +184,12 @@ function require_content_type(ctx::Context, expected::AbstractString, descriptio
     throw(ArgumentError("Expected Content-Type $(expected) for $(description), got " * (isempty(actual) ? "<missing>" : actual)))
 end
 
-request_body_text(ctx::Context)::String = String(ctx.req.body)
+function request_body_text(ctx::Context)::String
+    max_content_size = app_config_int(ctx.app, "max_content_size", DEFAULT_MAX_CONTENT_SIZE)
+    body_bytes = Vector{UInt8}(ctx.req.body)
+    length(body_bytes) <= max_content_size || throw(ArgumentError("Request body exceeds max_content_size"))
+    return String(body_bytes)
+end
 
 """
     reqtext(ctx)

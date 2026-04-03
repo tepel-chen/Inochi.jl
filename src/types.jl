@@ -2,6 +2,8 @@
 Route parameter storage used by matched handlers and middleware.
 """
 const RouteParams = Dict{String,String}
+const AppConfig = Dict{String,Union{String,Int}}
+const DEFAULT_MAX_CONTENT_SIZE = 4 * 1024 * 1024
 
 struct RouteDefinition
     method::String
@@ -41,7 +43,7 @@ mutable struct App
     dirty::Bool
     error_handler::Union{Nothing,Function}
     notfound_handler::Union{Nothing,Function}
-    secret::Union{Nothing,String}
+    config::AppConfig
     renderer::Union{Nothing,Function}
     file_renderer::Union{Nothing,Function}
     views::Union{Nothing,String}
@@ -52,4 +54,14 @@ end
 
 Create a new Inochi application.
 """
-App() = App(RouteDefinition[], Dict{String,MethodMatcher}(), true, nothing, nothing, nothing, nothing, nothing, nothing)
+App() = App(
+    RouteDefinition[],
+    Dict{String,MethodMatcher}(),
+    true,
+    nothing,
+    nothing,
+    AppConfig("max_content_size" => DEFAULT_MAX_CONTENT_SIZE),
+    nothing,
+    nothing,
+    nothing,
+)
