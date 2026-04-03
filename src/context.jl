@@ -149,12 +149,7 @@ function secure_cookie(ctx::Context, name::AbstractString; secret = nothing, def
     resolved_secret = resolve_cookie_secret(ctx, secret)
 
     constant_time_equals(signature, secure_cookie_signature(resolved_secret, payload)) || return default
-
-    try
-        return String(base64decode(payload))
-    catch
-        return default
-    end
+    return String(base64decode(payload))
 end
 
 """

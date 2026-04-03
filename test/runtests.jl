@@ -420,6 +420,24 @@ end
         @test_throws ArgumentError render(bad_ctx, "../secret.mustache", Dict("name" => "x"))
     end
 
+    mktempdir() do tmpdir
+        cd(tmpdir) do
+            mkpath("views")
+            write(joinpath("views", "default.mustache"), "<p>{{name}}</p>")
+
+            default_views_app = App()
+            default_views_app.renderer = (template, data) -> replace(template, "{{name}}" => string(data["name"]))
+
+            get(default_views_app, "/default-views") do ctx
+                ctx.render("default.mustache", Dict("name" => "default"))
+            end
+
+            default_views_response = Inochi.dispatch(default_views_app, HTTP.Request("GET", "/default-views"))
+            @test default_views_response.status == 200
+            @test String(default_views_response.body) == "<p>default</p>"
+        end
+    end
+
     file_renderer_app = App()
     file_renderer_app.renderer = (_, _) -> error("render_text fallback should not be used")
     file_renderer_app.file_renderer = (filepath, data) -> begin
@@ -528,6 +546,11 @@ end
     ctx_file_part = multipart_ctx.reqfile(name = "image")
     @test ctx_file_part !== nothing
     @test ctx_file_part.filename == "pixel.jpg"
+    @test length(multipart_ctx.reqmultipart()) == 2
+
+    bad_multipart_ctx = Context(parser_app, HTTP.Request("POST", "/upload", ["Content-Type" => "application/json"], "{}"))
+    @test_throws ArgumentError reqmultipart(bad_multipart_ctx)
+    @test_throws ArgumentError bad_multipart_ctx.reqmultipart()
 end
 
 @testset "Cookies" begin
@@ -589,6 +612,45 @@ end
     response3 = Inochi.dispatch(app, bad_req)
     @test String(response3.body) == "missing"
     @test HTTP.header(response3, "Vary") == "Origin, Cookie"
+
+    invalid_payload = "a"
+    invalid_signature = Inochi.secure_cookie_signature(app.config["secret"], invalid_payload)
+    invalid_cookie = "session=$(invalid_payload).$(invalid_signature)"
+    invalid_req = HTTP.Request("GET", "/secure-read", ["Cookie" => invalid_cookie])
+    response4 = Inochi.dispatch(app, invalid_req)
+    @test response4.status == 500
+    @test String(response4.body) == "Internal Server Error"
+
+    app_without_config_secret = App()
+
+    get(app_without_config_secret, "/secure-read") do ctx
+        text(ctx, string(secure_cookie(ctx, "session"; default = "missing")))
+    end
+
+    missing_secret_req = HTTP.Request("GET", "/secure-read", ["Cookie" => "session=YWJj.invalidsig"])
+    missing_secret_response = Inochi.dispatch(app_without_config_secret, missing_secret_req)
+    @test missing_secret_response.status == 500
+    @test String(missing_secret_response.body) == "Internal Server Error"
+
+    get(app_without_config_secret, "/secure-explicit-set") do ctx
+        set_secure_cookie(ctx, "session", "explicit"; secret = "alt-secret", path = "/")
+        text(ctx, "ok")
+    end
+
+    get(app_without_config_secret, "/secure-explicit-read") do ctx
+        text(ctx, string(secure_cookie(ctx, "session"; secret = "alt-secret", default = "missing")))
+    end
+
+    explicit_set_response = Inochi.dispatch(app_without_config_secret, HTTP.Request("GET", "/secure-explicit-set"))
+    explicit_cookie_header = only(String.(HTTP.headers(explicit_set_response, "Set-Cookie")))
+    explicit_value = first(split(explicit_cookie_header, ';'; limit = 2))
+    explicit_read_response = Inochi.dispatch(
+        app_without_config_secret,
+        HTTP.Request("GET", "/secure-explicit-read", ["Cookie" => explicit_value]),
+    )
+    @test explicit_set_response.status == 200
+    @test explicit_read_response.status == 200
+    @test String(explicit_read_response.body) == "explicit"
 end
 
 @testset "App Config" begin
@@ -626,6 +688,16 @@ end
         text(ctx, "hello")
     end
 
+    get(app, "/bytes") do
+        HTTP.Response(200, UInt8[0x68, 0x69])
+    end
+
+    get(app, "/buffer") do
+        io = IOBuffer()
+        write(io, "buffered")
+        HTTP.Response(200, take!(io))
+    end
+
     get(app, "/admin/panel") do ctx
         text(ctx, "ok")
     end
@@ -651,6 +723,16 @@ end
     response5 = Inochi.dispatch(app, HTTP.Request("GET", "/hello", ["If-None-Match" => HTTP.header(response1, "ETag")]))
     @test response5.status == 304
     @test HTTP.header(response5, "ETag") == HTTP.header(response1, "ETag")
+
+    response6 = Inochi.dispatch(app, HTTP.Request("GET", "/bytes"))
+    @test response6.status == 200
+    @test String(response6.body) == "hi"
+    @test !isempty(HTTP.header(response6, "ETag"))
+
+    response7 = Inochi.dispatch(app, HTTP.Request("GET", "/buffer"))
+    @test response7.status == 200
+    @test String(response7.body) == "buffered"
+    @test !isempty(HTTP.header(response7, "ETag"))
 
     logs = String(take!(log_buffer))
     @test occursin("GET /hello -> 200", logs)
@@ -756,6 +838,7 @@ end
 @testset "Mounted Apps" begin
     admin = App()
     root = App()
+    public = App()
     events = String[]
 
     use(admin) do ctx, next
@@ -775,7 +858,24 @@ end
         get(ctx.params, "name", "index")
     end
 
+    get(public, "/") do
+        "public-root"
+    end
+
+    get(public, "/info") do
+        "public-info"
+    end
+
+    route(root, "/", public)
     route(root, "/admin", admin)
+
+    response0 = Inochi.dispatch(root, HTTP.Request("GET", "/"))
+    @test response0.status == 200
+    @test String(response0.body) == "public-root"
+
+    response0b = Inochi.dispatch(root, HTTP.Request("GET", "/info"))
+    @test response0b.status == 200
+    @test String(response0b.body) == "public-info"
 
     response1 = Inochi.dispatch(root, HTTP.Request("GET", "/admin"))
     @test response1.status == 200
