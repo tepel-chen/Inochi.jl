@@ -54,10 +54,8 @@ function response_bytes(body)::Union{Nothing,Vector{UInt8}}
         return body
     elseif body isa AbstractVector{UInt8}
         return Vector{UInt8}(body)
-    elseif body isa AbstractString
-        return Vector{UInt8}(codeunits(String(body)))
     else
-        return nothing
+        throw(ArgumentError("Unsupported response body type: $(typeof(body))"))
     end
 end
 

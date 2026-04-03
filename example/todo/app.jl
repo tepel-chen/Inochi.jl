@@ -1,9 +1,9 @@
 import Pkg
 
 Pkg.activate(@__DIR__; io = devnull)
-Pkg.develop([
-    Pkg.PackageSpec(path = normpath(joinpath(@__DIR__, "..", ".."))),
-    Pkg.PackageSpec(path = normpath(joinpath(@__DIR__, "..", "..", "..", "Iwai"))),
+Pkg.add([
+    Pkg.PackageSpec(url = "https://github.com/tepel-chen/Inochi.jl"),
+    Pkg.PackageSpec(url = "https://github.com/tepel-chen/IwaiEngine.jl"),
 ]; io = devnull)
 Pkg.instantiate(; io = devnull)
 

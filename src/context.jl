@@ -112,7 +112,12 @@ end
 Append a `Set-Cookie` header to the response.
 """
 function setcookie(ctx::Context, name::AbstractString, value; kwargs...)::Context
-    cookie = HTTP.Cookies.Cookie(String(name), string(value); kwargs...)
+    cookie_kwargs = Pair{Symbol,Any}[]
+    for (key, val) in pairs(NamedTuple(kwargs))
+        key === :samesite && val === nothing && continue
+        push!(cookie_kwargs, key => val)
+    end
+    cookie = HTTP.Cookies.Cookie(String(name), string(value); cookie_kwargs...)
     push!(ctx.cookies_out, cookie)
     return ctx
 end

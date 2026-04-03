@@ -30,7 +30,7 @@ function csrf_token(ctx::Context)::String
     token isa AbstractString && return String(token)
 
     existing = ctx.cookie(CSRF_COOKIE_NAME, nothing)
-    if existing isa AbstractString
+    if existing isa AbstractString && !isempty(existing)
         resolved = String(existing)
         set!(ctx, :csrf_token, resolved)
         return resolved
@@ -68,12 +68,10 @@ function csrf(; cookie_name::AbstractString = CSRF_COOKIE_NAME, httponly::Bool =
     resolved_samesite = resolve_samesite(samesite)
 
     return function (ctx::Context)
-        token = ctx.cookie(resolved_cookie_name, nothing)
-        if !(token isa AbstractString) || isempty(token)
-            token = generate_csrf_token()
+        token = csrf_token(ctx)
+        existing = ctx.cookie(resolved_cookie_name, nothing)
+        if !(existing isa AbstractString) || isempty(existing)
             ctx.setcookie(resolved_cookie_name, token; httponly = httponly, secure = secure, samesite = resolved_samesite, path = String(path))
-        else
-            token = String(token)
         end
         set!(ctx, :csrf_token, token)
 

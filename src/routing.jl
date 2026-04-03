@@ -42,13 +42,13 @@ function on_notfound(app::App, handler::Function)::App
     return on_notfound(handler, app)
 end
 
-function register_route!(app::App, method::AbstractString, path::AbstractString, handler::Function; middleware_scope::Symbol = :exact, force_middleware::Bool = false)::App
+function register_route!(app::App, method::AbstractString, path::AbstractString, handler::Function; force_middleware::Bool = false)::App
     normalized_method = uppercase(String(method))
     normalized_path = normalize_path(path)
     is_middleware = force_middleware
 
     for expanded_path in expand_optional_paths(normalized_path)
-        push!(app.routes, RouteDefinition(normalized_method, expanded_path, handler, is_middleware, middleware_scope))
+        push!(app.routes, RouteDefinition(normalized_method, expanded_path, handler, is_middleware))
     end
 
     app.dirty = true
@@ -67,13 +67,7 @@ function route(app::App, prefix::AbstractString, subapp::App)::App
         mounted_path = mount_path(normalized_prefix, route_def.path)
         push!(
             app.routes,
-            RouteDefinition(
-                route_def.method,
-                mounted_path,
-                route_def.handler,
-                route_def.is_middleware,
-                route_def.middleware_scope,
-            ),
+            RouteDefinition(route_def.method, mounted_path, route_def.handler, route_def.is_middleware),
         )
     end
 
@@ -93,7 +87,7 @@ end
 Register middleware for all methods. Without a path it applies globally; with a path it applies to the prefix and its descendants.
 """
 function use(handler::Function, app::App)::App
-    return register_route!(app, "ALL", "/*", handler; middleware_scope = :prefix, force_middleware = true)
+    return register_route!(app, "ALL", "/*", handler; force_middleware = true)
 end
 
 function use(app::App, handler::Function)::App
@@ -101,7 +95,7 @@ function use(app::App, handler::Function)::App
 end
 
 function use(handler::Function, app::App, path::AbstractString)::App
-    return register_route!(app, "ALL", path, handler; middleware_scope = :prefix, force_middleware = true)
+    return register_route!(app, "ALL", path, handler; force_middleware = true)
 end
 
 function use(app::App, path::AbstractString, handler::Function)::App
@@ -307,17 +301,6 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
     try
         function final_handler()
             final_match === nothing && return handle_notfound(app, ctx)
-            if final_match.is_middleware
-                not_found = () -> handle_notfound(app, ctx)
-                ctx.params = final_match.params
-                original_next = ctx.next_handler
-                ctx.next_handler = not_found
-                try
-                    return to_response(final_match.handler(ctx), ctx)
-                finally
-                    ctx.next_handler = original_next
-                end
-            end
             ctx.params = final_match.params
             return to_response(final_match.handler(ctx), ctx)
         end
@@ -338,7 +321,7 @@ const EMPTY_METHOD_MATCHER = MethodMatcher(nothing, Dict{Int,DynamicRoute}(), Di
 function match_final_route(matcher::MethodMatcher, path::String)
     static_route = get(matcher.static_map, path, nothing)
     if static_route !== nothing
-        return (; handler = static_route.handler, path = static_route.path, params = RouteParams(), is_middleware = static_route.is_middleware)
+        return (; handler = static_route.handler, path = static_route.path, params = RouteParams())
     end
 
     matcher.regex === nothing && return nothing
@@ -350,7 +333,7 @@ function match_final_route(matcher::MethodMatcher, path::String)
 
     route = matcher.route_lookup[route_index]
     params = extract_params(matched, route)
-    return (; handler = route.handler, path = route.path, params = params, is_middleware = route.is_middleware)
+    return (; handler = route.handler, path = route.path, params = params)
 end
 
 function compile_routes!(app::App)::App
@@ -360,7 +343,7 @@ function compile_routes!(app::App)::App
             for method in SUPPORTED_HTTP_METHODS
                 push!(
                     get!(grouped_routes, method, RouteDefinition[]),
-                    RouteDefinition(method, route.path, route.handler, route.is_middleware, route.middleware_scope),
+                    RouteDefinition(method, route.path, route.handler, route.is_middleware),
                 )
             end
         else
@@ -384,7 +367,7 @@ function build_method_matcher(routes::Vector{RouteDefinition})::MethodMatcher
     capture_index = 0
 
     for route in routes
-        route.is_middleware && route.middleware_scope == :prefix && continue
+        route.is_middleware && continue
 
         parsed = parse_route_pattern(route.path)
         if parsed.static
@@ -449,7 +432,7 @@ function matched_route_index(matched::RegexMatch)
     for (index, capture) in enumerate(matched.captures)
         capture isa AbstractString && isempty(capture) && return index
     end
-    return nothing
+    @assert false "internal route matcher inconsistency"
 end
 
 function extract_params(matched::RegexMatch, route::DynamicRoute)::RouteParams
@@ -490,17 +473,18 @@ function handle_error(app::App, ctx::Context, err)::HTTP.Response
         return default_error_response()
     end
 
+    result = nothing
     try
         result = app.error_handler(ctx, err)
-        if result === nothing
-            status!(ctx, 500)
-            body!(ctx, "Internal Server Error")
-            return to_response(ctx)
-        end
-        return to_response(result, ctx)
     catch
         return default_error_response()
     end
+
+    if result === nothing
+        return default_error_response()
+    end
+
+    return to_response(result, ctx)
 end
 
 function handle_notfound(app::App, ctx::Context)::HTTP.Response
@@ -508,17 +492,18 @@ function handle_notfound(app::App, ctx::Context)::HTTP.Response
         return default_notfound_response()
     end
 
+    result = nothing
     try
         result = app.notfound_handler(ctx)
-        if result === nothing
-            status!(ctx, 404)
-            body!(ctx, "Not Found")
-            return to_response(ctx)
-        end
-        return to_response(result, ctx)
     catch
         return default_notfound_response()
     end
+
+    if result === nothing
+        return default_notfound_response()
+    end
+
+    return to_response(result, ctx)
 end
 
 default_error_response() = apply_default_headers(HTTP.Response(500, "Internal Server Error"))
@@ -547,16 +532,7 @@ method_matches(route_method::String, request_method::AbstractString) = route_met
 is_prefix_wildcard_route(path::String) = endswith(path, "/*")
 
 function match_middleware_path(route::RouteDefinition, path::String)
-    if route.middleware_scope == :prefix
-        return match_prefix_scope(route.path, path)
-    elseif is_prefix_wildcard_route(route.path)
-        return match_prefix_wildcard(route.path, path)
-    else
-        return nothing
-    end
-end
-
-function match_prefix_scope(pattern::String, path::String)
+    pattern = route.path
     if pattern == "/" || pattern == "/*"
         return RouteParams("*" => startswith(path, "/") ? path[2:end] : path)
     elseif is_prefix_wildcard_route(pattern)
@@ -591,21 +567,13 @@ function to_response(result)::HTTP.Response
         return apply_default_headers(HTTP.Response(200, String(result)))
     elseif result isa Vector{UInt8}
         return apply_default_headers(HTTP.Response(200, result))
-    else
-        return apply_default_headers(HTTP.Response(200, string(result)))
     end
+    throw(ArgumentError("Unsupported response body type: $(typeof(result))"))
 end
 
 function to_response(result, ctx::Context)::HTTP.Response
     if result isa Context
         return to_response(result)
-    elseif result isa HTTP.Response
-        return apply_default_headers(result, ctx)
-    elseif result isa AbstractString
-        return apply_default_headers(HTTP.Response(200, String(result)), ctx)
-    elseif result isa Vector{UInt8}
-        return apply_default_headers(HTTP.Response(200, result), ctx)
-    else
-        return apply_default_headers(HTTP.Response(200, string(result)), ctx)
     end
+    return apply_default_headers(to_response(result), ctx)
 end

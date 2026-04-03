@@ -10,7 +10,6 @@ struct RouteDefinition
     path::String
     handler::Function
     is_middleware::Bool
-    middleware_scope::Symbol
 end
 
 struct DynamicRoute
