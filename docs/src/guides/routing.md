@@ -19,6 +19,11 @@ post(app, "/todos") do ctx
     form = ctx.reqform()
     text(ctx, form["title"])
 end
+
+post(app, "/upload") do ctx
+    file = ctx.reqfile(name = "image")
+    text(ctx, file.filename)
+end
 ```
 
 ## Dynamic Segments
@@ -97,3 +102,17 @@ end
 - Call `next()` to continue to the next middleware or final route.
 - A middleware may call `next()` only once.
 - If middleware does not call `next()`, its own return value becomes the response.
+
+## Mounted Apps
+
+Use `route(app, "/prefix", subapp)` to split larger apps into smaller route groups.
+
+```julia
+admin = App()
+
+get(admin, "/dashboard") do ctx
+    text(ctx, "admin")
+end
+
+route(app, "/admin", admin)
+```

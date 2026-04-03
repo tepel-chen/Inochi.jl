@@ -88,7 +88,21 @@ Query parameters:
 query = ctx.reqquery()
 ```
 
-`reqtext`, `reqjson`, and `reqform` validate the request `Content-Type`.
+Multipart uploads:
+
+```julia
+parts = ctx.reqmultipart()
+file = ctx.reqfile(name = "image")
+```
+
+Cookies:
+
+```julia
+cookies = ctx.reqcookies()
+session = ctx.reqcookie("session", "guest")
+```
+
+`reqtext`, `reqjson`, `reqform`, and `reqmultipart` validate the request `Content-Type` and size limits. Cookie parsing is delegated to `HTTP.jl`.
 
 ## Cookies
 
@@ -103,6 +117,13 @@ Set response cookies:
 
 ```julia
 ctx.setcookie("session", "abc"; path = "/", httponly = true)
+```
+
+For signed cookies, use:
+
+```julia
+token = secure_cookie(ctx, "session")
+set_secure_cookie(ctx, "session", token)
 ```
 
 ## Request-Local State

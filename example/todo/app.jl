@@ -1,8 +1,10 @@
 import Pkg
 
 Pkg.activate(@__DIR__; io = devnull)
-Pkg.develop(Pkg.PackageSpec(path = normpath(joinpath(@__DIR__, "..", ".."))); io = devnull)
-Pkg.develop(Pkg.PackageSpec(path = normpath(joinpath(@__DIR__, "..", "..", "..", "Iwai"))); io = devnull)
+Pkg.develop([
+    Pkg.PackageSpec(path = normpath(joinpath(@__DIR__, "..", ".."))),
+    Pkg.PackageSpec(path = normpath(joinpath(@__DIR__, "..", "..", "..", "Iwai"))),
+]; io = devnull)
 Pkg.instantiate(; io = devnull)
 
 using HTTP
@@ -18,8 +20,8 @@ const app = App()
 const todos_app = build_todos_app(STORE)
 
 app.renderer = (template, data) -> IwaiEngine.parse(template)(data)
-app.file_renderer = (filepath, data) -> IwaiEngine.load(filepath)(data)
 app.views = joinpath(@__DIR__, "views")
+app.file_renderer = (filepath, data) -> IwaiEngine.load(filepath; root = app.views)(data)
 
 use(app, logger())
 

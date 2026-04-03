@@ -17,6 +17,7 @@ start
 
 ```@docs
 use
+route
 get
 post
 put
@@ -38,11 +39,17 @@ text
 html
 json
 redirect
+render
+render_text
 reqtext
 reqjson
 reqform
 reqquery
+reqmultipart
+reqfile
 setcookie
+secure_cookie
+set_secure_cookie
 set!
 ```
 
@@ -51,4 +58,16 @@ set!
 ```@docs
 static
 sendFile
+```
+
+## Middleware
+
+```@docs
+cors
+logger
+basicAuth
+csrf
+etag
+on_error
+on_notfound
 ```
