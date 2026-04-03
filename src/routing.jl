@@ -307,6 +307,7 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
 
         return run_middlewares(middleware_stack, ctx, final_handler)
     catch err
+        ctx.backtrace = catch_backtrace()
         return handle_error(app, ctx, err)
     end
 end

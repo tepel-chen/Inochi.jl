@@ -14,10 +14,23 @@ mutable struct Context
     state::Dict{Symbol,Any}
     varies_on_cookie::Bool
     next_handler::Union{Nothing,Function}
+    backtrace::Any
 end
 
 function Context(app::App, req::HTTP.Request; params::RouteParams = RouteParams())
-    return Context(app, req, params, 200, Dict{String,String}(), "", HTTP.Cookies.Cookie[], Dict{Symbol,Any}(), false, nothing)
+    return Context(
+        app,
+        req,
+        params,
+        200,
+        Dict{String,String}(),
+        "",
+        HTTP.Cookies.Cookie[],
+        Dict{Symbol,Any}(),
+        false,
+        nothing,
+        nothing,
+    )
 end
 
 struct CookieAccessor
@@ -39,7 +52,7 @@ function (accessor::CookieAccessor)(key::AbstractString, default = nothing)
 end
 
 function Base.getproperty(ctx::Context, name::Symbol)
-    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state, :varies_on_cookie, :next_handler)
+    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state, :varies_on_cookie, :next_handler, :backtrace)
         return getfield(ctx, name)
     elseif name == :cookie
         return CookieAccessor(ctx)

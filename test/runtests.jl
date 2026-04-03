@@ -935,6 +935,18 @@ end
     @test HTTP.header(response2, "Content-Type") == "application/json; charset=utf-8"
     @test occursin("bad request", String(response2.body))
 
+    trace_app = App()
+    get(trace_app, "/fail") do ctx
+        error("boom")
+    end
+    on_error(trace_app) do ctx, err
+        text(ctx, sprint(showerror, err, ctx.backtrace); status = 500)
+    end
+    trace_response = Inochi.dispatch(trace_app, HTTP.Request("GET", "/fail"))
+    @test trace_response.status == 500
+    @test occursin("boom", String(trace_response.body))
+    @test occursin("Stacktrace", String(trace_response.body))
+
     default_error_app = App()
     get(default_error_app, "/fail") do ctx
         throw(ArgumentError("bad request"))

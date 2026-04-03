@@ -15,6 +15,7 @@ Common fields:
 - `ctx.status`: response status
 - `ctx.headers`: response headers
 - `ctx.body`: response body
+- `ctx.backtrace`: the captured backtrace when dispatch catches an error
 
 You can also access request properties through `ctx`, for example `ctx.method` or `ctx.target`.
 
@@ -125,6 +126,8 @@ For signed cookies, use:
 token = secure_cookie(ctx, "session")
 set_secure_cookie(ctx, "session", token)
 ```
+
+When a request handler throws, `on_error` can inspect `ctx.backtrace` and render it into the response. This is useful for development debugging and for custom error pages.
 
 ## Request-Local State
 

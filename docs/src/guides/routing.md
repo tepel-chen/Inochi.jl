@@ -103,6 +103,16 @@ end
 - A middleware may call `next()` only once.
 - If middleware does not call `next()`, its own return value becomes the response.
 
+## Error Handling
+
+Use `on_error` to override the default `500 Internal Server Error` response. The handler receives `ctx` and the thrown error. When the error was caught by dispatch, `ctx.backtrace` is populated and can be rendered for debugging.
+
+```julia
+on_error(app) do ctx, err
+    text(ctx, sprint(showerror, err, ctx.backtrace); status = 500)
+end
+```
+
 ## Mounted Apps
 
 Use `route(app, "/prefix", subapp)` to split larger apps into smaller route groups.
