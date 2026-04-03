@@ -41,6 +41,14 @@ end
 
 etag_for_bytes(text::AbstractString)::String = etag_for_bytes(Vector{UInt8}(codeunits(text)))
 
+function etag_for_file(path::AbstractString)::String
+    info = stat(path)
+    size_hex = string(info.size; base = 16)
+    mtime_ns = round(Int, info.mtime * 1_000_000_000)
+    mtime_hex = string(mtime_ns; base = 16)
+    return "\"" * size_hex * "-" * mtime_hex * "\""
+end
+
 function response_bytes(body)::Union{Nothing,Vector{UInt8}}
     if body isa Vector{UInt8}
         return body
@@ -83,11 +91,11 @@ function file_response(path::AbstractString; req::Union{Nothing,HTTP.Request} = 
     resolved === nothing && return HTTP.Response(403, "Forbidden")
     isfile(resolved) || return HTTP.Response(404, "Not Found")
 
-    body = read(resolved)
-    etag = etag_for_bytes(body)
+    etag = etag_for_file(resolved)
     not_modified = maybe_not_modified(req, etag)
     not_modified !== nothing && return not_modified
 
+    body = read(resolved)
     headers = ["Content-Type" => content_type_for_path(resolved), ETAG_HEADER_NAME => etag]
     return HTTP.Response(200, headers, body)
 end
