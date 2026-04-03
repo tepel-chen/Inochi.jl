@@ -1,4 +1,5 @@
 include("cors.jl")
+include("csrf.jl")
 include("etag.jl")
 include("logger.jl")
 include("basic_auth.jl")

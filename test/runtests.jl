@@ -620,6 +620,53 @@ end
     @test occursin("GET /admin/panel -> 200", logs)
 end
 
+@testset "CSRF Middleware" begin
+    app = App()
+    use(app, csrf())
+
+    get(app, "/form") do ctx
+        text(ctx, csrf_token(ctx))
+    end
+
+    post(app, "/submit") do ctx
+        text(ctx, "ok")
+    end
+
+    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/form"))
+    @test response1.status == 200
+    issued_cookie = only(String.(HTTP.headers(response1, "Set-Cookie")))
+    @test occursin("csrf_token=", issued_cookie)
+    token = split(split(issued_cookie, ';'; limit = 2)[1], '='; limit = 2)[2]
+    @test String(response1.body) == token
+
+    response2 = Inochi.dispatch(app, HTTP.Request("POST", "/submit", ["Cookie" => "csrf_token=" * token], ""))
+    @test response2.status == 403
+
+    response3 = Inochi.dispatch(
+        app,
+        HTTP.Request(
+            "POST",
+            "/submit",
+            ["Cookie" => "csrf_token=" * token, "X-CSRF-Token" => token],
+            "",
+        ),
+    )
+    @test response3.status == 200
+    @test String(response3.body) == "ok"
+
+    form_body = "csrf_token=" * HTTP.URIs.escapeuri(token)
+    response4 = Inochi.dispatch(
+        app,
+        HTTP.Request(
+            "POST",
+            "/submit",
+            ["Cookie" => "csrf_token=" * token, "Content-Type" => "application/x-www-form-urlencoded"],
+            form_body,
+        ),
+    )
+    @test response4.status == 200
+end
+
 @testset "Error Handling" begin
     app = App()
 
