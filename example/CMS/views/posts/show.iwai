@@ -1,0 +1,74 @@
+{% extends "../layouts/base.iwai" %}
+
+{% block content %}
+<article class="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-card">
+  <div class="flex flex-col gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.32em] text-orange-300">Post</p>
+      <h1 class="mt-3 text-4xl font-black text-white">{{ post.title }}</h1>
+      <p class="mt-3 max-w-3xl text-base leading-7 text-stone-300">{{ post.summary }}</p>
+    </div>
+    <div class="flex flex-wrap gap-3 text-sm text-stone-400">
+      <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2">{{ author.name }}</span>
+      <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2">{{ post.views }} views</span>
+      <span class="rounded-full border border-white/10 bg-white/5 px-3 py-2">{{ post.created_at }}</span>
+    </div>
+  </div>
+
+  <div class="prose prose-invert mt-8 max-w-none prose-headings:text-white prose-p:text-stone-300 prose-li:text-stone-300 prose-strong:text-white">{{ post.body_html|safe }}</div>
+</article>
+
+<section class="mt-8 rounded-3xl border border-white/10 bg-white/5 p-8 shadow-card">
+  <div class="flex items-end justify-between gap-4">
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-[0.32em] text-orange-300">Discussion</p>
+      <h2 class="mt-2 text-2xl font-bold text-white">Comments</h2>
+    </div>
+  </div>
+
+  {% if can_comment %}
+  <form class="mt-6 space-y-4" method="post" action="{{ comment_action }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label class="block">
+      <span class="mb-2 block text-sm font-medium text-stone-200">Add a comment</span>
+      <textarea class="min-h-32 w-full rounded-2xl border border-white/10 bg-stone-950/70 px-4 py-3 text-stone-100 outline-none transition placeholder:text-stone-500 focus:border-orange-400" name="body" rows="4" placeholder="Share a note about this post"></textarea>
+    </label>
+    <button class="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-400" type="submit">Post comment</button>
+  </form>
+  {% else %}
+  <p class="mt-6 text-sm text-stone-400">Login to leave a comment.</p>
+  {% end %}
+
+  {% if has_comments %}
+  <div class="mt-8 space-y-4">
+    {% for comment in comments %}
+    <article class="rounded-2xl border border-white/10 bg-stone-950/40 p-5">
+      <div class="flex items-center justify-between gap-4 text-sm">
+        <strong class="text-white">{{ comment.author }}</strong>
+        <span class="text-stone-400">{{ comment.created_at }}</span>
+      </div>
+      <p class="mt-3 text-sm leading-7 text-stone-300">{{ comment.body }}</p>
+    </article>
+    {% end %}
+  </div>
+  {% else %}
+  <p class="mt-6 text-sm text-stone-400">No comments yet.</p>
+  {% end %}
+
+  {% if comments_pagination.has_multiple_pages %}
+  <nav class="mt-8 flex items-center justify-between gap-4 text-sm">
+    <div>
+      {% if comments_pagination.has_prev %}
+      <a class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium transition hover:bg-white/10" href="{{ comments_pagination.prev_href }}">Previous</a>
+      {% end %}
+    </div>
+    <span class="text-stone-400">Page {{ comments_pagination.current_page }} / {{ comments_pagination.total_pages }}</span>
+    <div>
+      {% if comments_pagination.has_next %}
+      <a class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium transition hover:bg-white/10" href="{{ comments_pagination.next_href }}">Next</a>
+      {% end %}
+    </div>
+  </nav>
+  {% end %}
+</section>
+{% end %}

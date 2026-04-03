@@ -1,0 +1,109 @@
+{% extends "../../layouts/base.iwai" %}
+
+{% block content %}
+<section class="mb-6">
+  <p class="text-xs font-semibold uppercase tracking-[0.32em] text-orange-300">Admin</p>
+  <h1 class="mt-2 text-3xl font-black text-white">{{ title }}</h1>
+</section>
+
+<form class="space-y-5 rounded-3xl border border-white/10 bg-white/5 p-8 shadow-card" method="post" action="{{ action }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label class="block">
+    <span class="mb-2 block text-sm font-medium text-stone-200">Title</span>
+    <input class="w-full rounded-2xl border border-white/10 bg-stone-950/70 px-4 py-3 text-stone-100 outline-none transition focus:border-orange-400" type="text" name="title" value="{{ post.title }}">
+  </label>
+  <label class="block">
+    <span class="mb-2 block text-sm font-medium text-stone-200">Summary</span>
+    <textarea class="min-h-24 w-full rounded-2xl border border-white/10 bg-stone-950/70 px-4 py-3 text-stone-100 outline-none transition focus:border-orange-400" name="summary" rows="3">{{ post.summary }}</textarea>
+  </label>
+  <label class="block">
+    <span class="mb-2 block text-sm font-medium text-stone-200">Markdown</span>
+    <textarea id="markdown-editor" class="min-h-96 w-full rounded-2xl border border-white/10 bg-stone-950/70 px-4 py-3 font-mono text-sm text-stone-100 outline-none transition focus:border-orange-400" name="markdown" rows="18">{{ post.markdown }}</textarea>
+    <p class="mt-2 text-xs text-stone-400">Paste an image to upload it automatically.</p>
+  </label>
+  <label class="flex items-center gap-3 text-sm text-stone-200">
+    <input class="h-4 w-4 rounded border-white/10 bg-stone-950 text-orange-500 focus:ring-orange-400" type="checkbox" name="published" {% if post.checked %}checked{% end %}>
+    <span>Published</span>
+  </label>
+  <div class="flex flex-wrap gap-3">
+    <button class="inline-flex items-center justify-center rounded-2xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-400" type="submit">Save post</button>
+    {% if !is_new %}
+    <a class="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-stone-100 transition hover:bg-white/10" href="/admin/posts/{{ post.id }}/detail">Back to detail</a>
+    {% end %}
+  </div>
+</form>
+
+<script nonce="{{ csp_nonce }}">
+(() => {
+  const editor = document.getElementById("markdown-editor");
+  const csrfInput = document.querySelector('input[name="csrf_token"]');
+  if (!editor || !csrfInput) {
+    return;
+  }
+
+  const uploadUrl = "{{ upload_url }}";
+  const csrfToken = csrfInput.value;
+
+  function insertAtCursor(text, start, end) {
+    const resolvedStart = start ?? editor.selectionStart ?? editor.value.length;
+    const resolvedEnd = end ?? editor.selectionEnd ?? editor.value.length;
+    if (typeof editor.setRangeText === "function") {
+      editor.setRangeText(text, resolvedStart, resolvedEnd, "end");
+    } else {
+      editor.value = editor.value.slice(0, resolvedStart) + text + editor.value.slice(resolvedEnd);
+    }
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    editor.focus();
+    const cursor = resolvedStart + text.length;
+    editor.setSelectionRange(cursor, cursor);
+  }
+
+  editor.addEventListener("paste", async (event) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard || !clipboard.items) {
+      return;
+    }
+
+    const imageItem = Array.from(clipboard.items).find((item) => item.kind === "file" && item.type && item.type.startsWith("image/"));
+    if (!imageItem) {
+      return;
+    }
+
+    const file = imageItem.getAsFile();
+    if (!file) {
+      return;
+    }
+
+    event.preventDefault();
+    const start = editor.selectionStart ?? editor.value.length;
+    const end = editor.selectionEnd ?? editor.value.length;
+
+    const payload = new FormData();
+    payload.append("image", file, file.name || "pasted-image.png");
+    payload.append("csrf_token", csrfToken);
+
+    try {
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "X-CSRF-Token": csrfToken,
+        },
+        body: payload,
+        credentials: "same-origin",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const data = await response.json();
+      insertAtCursor(data.markdown || `![](${data.url})`, start, end);
+    } catch (error) {
+      console.error(error);
+      alert("Image upload failed.");
+    }
+  });
+})();
+</script>
+{% end %}

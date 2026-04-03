@@ -1,0 +1,153 @@
+:root {
+  --cms-base-100: oklch(98% 0.003 247.858);
+  --cms-base-200: oklch(96% 0.007 247.896);
+  --cms-base-300: oklch(92% 0.013 255.508);
+  --cms-base-content: oklch(20% 0.042 265.755);
+  --cms-primary: oklch(77% 0.152 181.912);
+  --cms-primary-content: oklch(27% 0.046 192.524);
+  --cms-secondary: oklch(76% 0.177 163.223);
+  --cms-secondary-content: oklch(26% 0.051 172.552);
+  --cms-accent: oklch(70% 0.165 254.624);
+  --cms-accent-content: oklch(28% 0.091 267.935);
+  --cms-neutral: oklch(37% 0.044 257.287);
+  --cms-neutral-content: oklch(98% 0.003 247.858);
+  --cms-info: oklch(58% 0.158 241.966);
+  --cms-success: oklch(62% 0.194 149.214);
+  --cms-warning: oklch(68% 0.162 75.834);
+  --cms-error: oklch(57% 0.245 27.325);
+  --cms-border: color-mix(in oklab, var(--cms-neutral) 12%, white);
+  --cms-panel-shadow: 0 24px 80px rgba(15, 23, 42, 0.08);
+}
+
+body {
+  color: var(--cms-base-content);
+}
+
+.shadow-card {
+  box-shadow: var(--cms-panel-shadow) !important;
+}
+
+[class*="bg-white/5"] {
+  background-color: color-mix(in oklab, var(--cms-base-100) 76%, white) !important;
+}
+
+[class*="bg-stone-950/40"],
+[class*="bg-stone-950/70"] {
+  background-color: color-mix(in oklab, var(--cms-base-200) 88%, var(--cms-neutral) 12%) !important;
+}
+
+[class*="border-white/10"] {
+  border-color: var(--cms-border) !important;
+}
+
+[class*="border-white/15"] {
+  border-color: color-mix(in oklab, var(--cms-neutral) 16%, white) !important;
+}
+
+[class*="text-white"] {
+  color: var(--cms-base-content) !important;
+}
+
+[class*="text-stone-100"],
+[class*="text-stone-200"] {
+  color: color-mix(in oklab, var(--cms-base-content) 88%, white) !important;
+}
+
+[class*="text-stone-300"],
+[class*="text-stone-400"],
+[class*="text-stone-500"] {
+  color: color-mix(in oklab, var(--cms-base-content) 58%, white) !important;
+}
+
+[class*="bg-orange-500"] {
+  background-color: var(--cms-primary) !important;
+  color: var(--cms-primary-content) !important;
+}
+
+[class*="hover:bg-orange-400"]:hover {
+  background-color: color-mix(in oklab, var(--cms-primary) 85%, white) !important;
+}
+
+[class*="text-orange-300"],
+[class*="hover:text-orange-300"]:hover {
+  color: var(--cms-primary) !important;
+}
+
+[class*="border-orange-400/20"],
+[class*="border-orange-400/30"],
+[class*="hover:border-orange-400/40"]:hover {
+  border-color: color-mix(in oklab, var(--cms-primary) 34%, white) !important;
+}
+
+[class*="bg-orange-500/10"] {
+  background-color: color-mix(in oklab, var(--cms-primary) 12%, white) !important;
+}
+
+[class*="text-orange-100"] {
+  color: var(--cms-primary-content) !important;
+}
+
+[class*="bg-emerald-500/10"] {
+  background-color: color-mix(in oklab, var(--cms-success) 12%, white) !important;
+}
+
+[class*="border-emerald-400/30"] {
+  border-color: color-mix(in oklab, var(--cms-success) 32%, white) !important;
+}
+
+[class*="text-emerald-200"] {
+  color: color-mix(in oklab, var(--cms-success) 72%, black) !important;
+}
+
+[class*="bg-amber-500/10"] {
+  background-color: color-mix(in oklab, var(--cms-warning) 14%, white) !important;
+}
+
+[class*="border-amber-400/30"] {
+  border-color: color-mix(in oklab, var(--cms-warning) 34%, white) !important;
+}
+
+[class*="text-amber-100"] {
+  color: color-mix(in oklab, var(--cms-warning) 68%, black) !important;
+}
+
+[class*="bg-sky-400"] {
+  background-color: var(--cms-info) !important;
+}
+
+.nav-link.is-active {
+  background: color-mix(in oklab, var(--cms-primary) 14%, white);
+  color: var(--cms-primary-content);
+}
+
+.prose a {
+  color: var(--cms-accent);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
+.prose a:hover {
+  color: color-mix(in oklab, var(--cms-accent) 84%, black);
+}
+
+.prose code {
+  border: 1px solid var(--cms-border);
+  background: color-mix(in oklab, var(--cms-base-200) 85%, white);
+  border-radius: 0.5rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.92em;
+}
+
+.prose pre {
+  border: 1px solid var(--cms-border);
+  background: color-mix(in oklab, var(--cms-base-200) 92%, var(--cms-neutral) 8%);
+  border-radius: 1rem;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+}
+
+.prose pre code {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}

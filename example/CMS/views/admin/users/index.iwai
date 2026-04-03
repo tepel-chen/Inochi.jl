@@ -1,0 +1,55 @@
+{% extends "../../layouts/base.iwai" %}
+
+{% block content %}
+<section class="mb-6">
+  <div>
+    <p class="text-xs font-semibold uppercase tracking-[0.32em] text-orange-300">Admin</p>
+    <h1 class="mt-2 text-3xl font-black text-white">Users</h1>
+  </div>
+</section>
+
+{% if has_users %}
+<div class="overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-card">
+  <table class="min-w-full divide-y divide-white/10 text-left text-sm text-stone-300">
+    <thead class="bg-white/5 text-xs uppercase tracking-wide text-stone-400">
+      <tr>
+        <th class="px-6 py-4">Name</th>
+        <th class="px-6 py-4">Email</th>
+        <th class="px-6 py-4">Role</th>
+        <th class="px-6 py-4">Posts</th>
+        <th class="px-6 py-4">Comments</th>
+        <th class="px-6 py-4">Joined</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/10">
+      {% for user in users %}
+      <tr>
+        <td class="px-6 py-4 align-top"><a class="font-semibold text-white hover:text-orange-300" href="/admin/users/{{ user.id }}/detail">{{ user.name }}</a></td>
+        <td class="px-6 py-4">{{ user.email }}</td>
+        <td class="px-6 py-4">{{ user.role }}</td>
+        <td class="px-6 py-4">{{ user.posts }}</td>
+        <td class="px-6 py-4">{{ user.comments }}</td>
+        <td class="px-6 py-4">{{ user.joined_at }}</td>
+      </tr>
+      {% end %}
+    </tbody>
+  </table>
+</div>
+{% end %}
+
+{% if pagination.has_multiple_pages %}
+<nav class="mt-8 flex items-center justify-between gap-4 text-sm">
+  <div>
+    {% if pagination.has_prev %}
+    <a class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium transition hover:bg-white/10" href="{{ pagination.prev_href }}">Previous</a>
+    {% end %}
+  </div>
+  <span class="text-stone-400">Page {{ pagination.current_page }} / {{ pagination.total_pages }}</span>
+  <div>
+    {% if pagination.has_next %}
+    <a class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium transition hover:bg-white/10" href="{{ pagination.next_href }}">Next</a>
+    {% end %}
+  </div>
+</nav>
+{% end %}
+{% end %}

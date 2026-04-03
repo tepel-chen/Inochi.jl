@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-base-100">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ page_title }}</title>
+    <link rel="stylesheet" href="/static/app.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script nonce="{{ csp_nonce }}">
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              base: {
+                100: 'oklch(98% 0.003 247.858)',
+                200: 'oklch(96% 0.007 247.896)',
+                300: 'oklch(92% 0.013 255.508)',
+                content: 'oklch(20% 0.042 265.755)'
+              },
+              primary: {
+                DEFAULT: 'oklch(77% 0.152 181.912)',
+                content: 'oklch(27% 0.046 192.524)'
+              },
+              secondary: {
+                DEFAULT: 'oklch(76% 0.177 163.223)',
+                content: 'oklch(26% 0.051 172.552)'
+              },
+              accent: {
+                DEFAULT: 'oklch(70% 0.165 254.624)',
+                content: 'oklch(28% 0.091 267.935)'
+              },
+              neutral: {
+                DEFAULT: 'oklch(37% 0.044 257.287)',
+                content: 'oklch(98% 0.003 247.858)'
+              },
+              info: {
+                DEFAULT: 'oklch(58% 0.158 241.966)',
+                content: 'oklch(97% 0.013 236.62)'
+              },
+              success: {
+                DEFAULT: 'oklch(62% 0.194 149.214)',
+                content: 'oklch(98% 0.018 155.826)'
+              },
+              warning: {
+                DEFAULT: 'oklch(68% 0.162 75.834)',
+                content: 'oklch(98% 0.026 102.212)'
+              },
+              error: {
+                DEFAULT: 'oklch(57% 0.245 27.325)',
+                content: 'oklch(97% 0.013 17.38)'
+              },
+              canvas: 'oklch(98% 0.003 247.858)',
+              panel: 'oklch(96% 0.007 247.896)',
+              ink: 'oklch(20% 0.042 265.755)'
+            },
+            boxShadow: {
+              card: '0 24px 80px rgba(15, 23, 42, 0.08)'
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body class="min-h-full bg-[radial-gradient(circle_at_top,_rgba(84,182,171,0.18),_transparent_34%),linear-gradient(180deg,_oklch(98%_0.003_247.858)_0%,_oklch(96%_0.007_247.896)_42%,_oklch(92%_0.013_255.508)_100%)] text-slate-900">
+    <div class="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <header class="mb-8 rounded-3xl border border-white/10 bg-white/5 px-6 py-5 shadow-card backdrop-blur">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <a class="text-2xl font-black tracking-tight text-white" href="/">Inochi CMS</a>
+          </div>
+          <nav class="flex flex-wrap items-center gap-2 text-sm">
+            <a class="{{ nav_home.class_name }} rounded-full px-4 py-2 font-medium transition hover:bg-white/10" href="{{ nav_home.href }}">{{ nav_home.label }}</a>
+            {% if show_admin_nav %}
+            <a class="{{ nav_admin.class_name }} rounded-full px-4 py-2 font-medium transition hover:bg-white/10" href="{{ nav_admin.href }}">{{ nav_admin.label }}</a>
+            {% end %}
+            {% if current_user.logged_in %}
+            <span class="rounded-full border border-orange-400/30 bg-orange-500/10 px-4 py-2 font-medium text-orange-100">{{ current_user.name }} · {{ current_user.role }}</span>
+            <form method="post" action="/logout" class="inline-flex">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="rounded-full bg-white/10 px-4 py-2 font-medium text-stone-100 transition hover:bg-white/20">Logout</button>
+            </form>
+            {% else %}
+            <a class="{{ nav_login.class_name }} rounded-full px-4 py-2 font-medium transition hover:bg-white/10" href="{{ nav_login.href }}">{{ nav_login.label }}</a>
+            <a class="{{ nav_register.class_name }} rounded-full bg-orange-500 px-4 py-2 font-semibold text-white transition hover:bg-orange-400" href="{{ nav_register.href }}">{{ nav_register.label }}</a>
+            {% end %}
+          </nav>
+        </div>
+      </header>
+
+      {% if has_message %}
+      <div class="mb-6 rounded-2xl border border-amber-400/30 bg-amber-500/10 px-5 py-4 text-sm text-amber-100 shadow-card">
+        {{ message }}
+      </div>
+      {% end %}
+
+      <main>
+        {% block content %}{% end %}
+      </main>
+    </div>
+  </body>
+</html>

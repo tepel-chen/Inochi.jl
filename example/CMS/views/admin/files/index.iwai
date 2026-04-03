@@ -1,0 +1,53 @@
+{% extends "../../layouts/base.iwai" %}
+
+{% block content %}
+<section class="mb-6">
+  <div>
+    <p class="text-xs font-semibold uppercase tracking-[0.32em] text-orange-300">Admin</p>
+    <h1 class="mt-2 text-3xl font-black text-white">Files</h1>
+  </div>
+</section>
+
+{% if has_files %}
+<div class="overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-card">
+  <table class="min-w-full divide-y divide-white/10 text-left text-sm text-stone-300">
+    <thead class="bg-white/5 text-xs uppercase tracking-wide text-stone-400">
+      <tr>
+        <th class="px-6 py-4">Name</th>
+        <th class="px-6 py-4">Type</th>
+        <th class="px-6 py-4">Size</th>
+        <th class="px-6 py-4">Owner</th>
+        <th class="px-6 py-4">Uploaded</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/10">
+      {% for file in files %}
+      <tr>
+        <td class="px-6 py-4 align-top"><a class="font-semibold text-white hover:text-orange-300" href="/admin/files/{{ file.id }}/detail">{{ file.filename }}</a></td>
+        <td class="px-6 py-4">{{ file.media_type }}</td>
+        <td class="px-6 py-4">{{ file.size_kb }} KB</td>
+        <td class="px-6 py-4">{{ file.owner_name }}</td>
+        <td class="px-6 py-4">{{ file.uploaded_at }}</td>
+      </tr>
+      {% end %}
+    </tbody>
+  </table>
+</div>
+{% end %}
+
+{% if pagination.has_multiple_pages %}
+<nav class="mt-8 flex items-center justify-between gap-4 text-sm">
+  <div>
+    {% if pagination.has_prev %}
+    <a class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium transition hover:bg-white/10" href="{{ pagination.prev_href }}">Previous</a>
+    {% end %}
+  </div>
+  <span class="text-stone-400">Page {{ pagination.current_page }} / {{ pagination.total_pages }}</span>
+  <div>
+    {% if pagination.has_next %}
+    <a class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-2 font-medium transition hover:bg-white/10" href="{{ pagination.next_href }}">Next</a>
+    {% end %}
+  </div>
+</nav>
+{% end %}
+{% end %}

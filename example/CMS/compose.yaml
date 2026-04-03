@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: "cms"
+      POSTGRES_USER: "cms"
+      POSTGRES_PASSWORD: "cms"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cms -d cms"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - cms-postgres-data:/var/lib/postgresql/data
+
+  cms:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      CMS_SKIP_PKG_SETUP: "1"
+      HOST: "0.0.0.0"
+      PORT: "8080"
+      DB_HOST: "db"
+      DB_PORT: "5432"
+      DB_NAME: "cms"
+      DB_USER: "cms"
+      DB_PASSWORD: "cms"
+
+volumes:
+  cms-postgres-data:
