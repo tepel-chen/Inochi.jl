@@ -13,7 +13,7 @@ function basicAuth(; username::AbstractString, password::AbstractString, realm::
             encoded = authorization[7:end]
             decoded = String(base64decode(encoded))
             if constant_time_equals(decoded, expected)
-                return ctx.next()
+                return next(ctx)
             end
         end
 

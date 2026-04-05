@@ -22,6 +22,6 @@ function cors(; origin::AbstractString = "*", methods = nothing, headers::Abstra
             return ctx
         end
 
-        return ctx.next()
+        return next(ctx)
     end
 end

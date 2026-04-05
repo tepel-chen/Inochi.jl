@@ -16,12 +16,12 @@ get(app, "/") do ctx
 end
 
 post(app, "/todos") do ctx
-    form = ctx.reqform()
+    form = reqform(ctx)
     text(ctx, form["title"])
 end
 
 post(app, "/upload") do ctx
-    file = ctx.reqfile(name = "image")
+    file = reqfile(ctx; name = "image")
     text(ctx, file.filename)
 end
 ```
@@ -75,7 +75,7 @@ Global middleware:
 ```julia
 use(app) do ctx
     header!(ctx, "X-Powered-By", "Inochi")
-    ctx.next()
+    next(ctx)
 end
 ```
 
@@ -84,7 +84,7 @@ Prefix middleware:
 ```julia
 use(app, "/admin") do ctx
     header!(ctx, "X-Area", "admin")
-    ctx.next()
+    next(ctx)
 end
 ```
 
@@ -92,16 +92,16 @@ Wildcard middleware also works on method-specific routes:
 
 ```julia
 get(app, "/admin/*") do ctx
-    ctx.next()
+    next(ctx)
 end
 ```
 
 ## Middleware Rules
 
 - Middleware receives `ctx`.
-- Call `ctx.next()` to continue to the next middleware or final route.
-- A middleware may call `ctx.next()` only once.
-- If middleware does not call `next()`, its own return value becomes the response.
+- Call `next(ctx)` to continue to the next middleware or final route.
+- A middleware may call `next(ctx)` only once.
+- If middleware does not call `next(ctx)`, its own return value becomes the response.
 
 ## Error Handling
 

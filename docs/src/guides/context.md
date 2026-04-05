@@ -65,20 +65,20 @@ end
 
 ## Rendering
 
-`ctx.render(filename, data)` renders a file from `app.views`. `ctx.render_text(template, data)` renders an inline template string.
+`render(ctx, filename, data)` renders a file from `app.views`. `render_text(ctx, template, data)` renders an inline template string.
 
 The application provides the rendering functions:
 
 - `app.renderer(template, data)` for string templates
 - `app.file_renderer(filepath, data)` for file-backed templates
 
-If `app.file_renderer` is unset, `ctx.render` falls back to reading the file contents and passing them to `app.renderer`.
+If `app.file_renderer` is unset, `render(ctx, ...)` falls back to reading the file contents and passing them to `app.renderer`.
 
 IwaiEngine uses `NamedTuple` render contexts. Pass view data as a `NamedTuple`, for example:
 
 ```julia
 get(app, "/page") do ctx
-    ctx.render("pages/index.iwai", (title = "Hello", user_name = "tchen"))
+    render(ctx, "pages/index.iwai", (title = "Hello", user_name = "tchen"))
 end
 ```
 
@@ -87,56 +87,56 @@ end
 Text body:
 
 ```julia
-ctx.reqtext()
+reqtext(ctx)
 ```
 
 JSON body:
 
 ```julia
-payload = ctx.reqjson()
+payload = reqjson(ctx)
 ```
 
 Form body:
 
 ```julia
-form = ctx.reqform()
+form = reqform(ctx)
 ```
 
 Query parameters:
 
 ```julia
-query = ctx.reqquery()
+query = reqquery(ctx)
 ```
 
 Multipart uploads:
 
 ```julia
-parts = ctx.reqmultipart()
-file = ctx.reqfile(name = "image")
+parts = reqmultipart(ctx)
+file = reqfile(ctx; name = "image")
 ```
 
 Cookies:
 
 ```julia
-cookies = ctx.reqcookies()
-session = ctx.reqcookie("session", "guest")
+session = cookie(ctx, "session", "guest")
+theme = cookie(ctx)["theme"]
 ```
 
-`reqtext`, `reqjson`, `reqform`, and `reqmultipart` validate the request `Content-Type` and size limits. Cookie parsing is delegated to `HTTP.jl`.
+`reqtext`, `reqjson`, `reqform`, and `reqmultipart` validate the request `Content-Type` and size limits. Request cookies are read with `cookie(ctx, ...)` and `cookie(ctx)[...]`.
 
 ## Cookies
 
 Read request cookies:
 
 ```julia
-session = ctx.cookie("session", "guest")
-theme = ctx.cookie["theme"]
+session = cookie(ctx, "session", "guest")
+theme = cookie(ctx)["theme"]
 ```
 
 Set response cookies:
 
 ```julia
-ctx.setcookie("session", "abc"; path = "/", httponly = true)
+setcookie(ctx, "session", "abc"; path = "/", httponly = true)
 ```
 
 For signed cookies, use:

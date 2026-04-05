@@ -35,6 +35,7 @@ trace
 status!
 header!
 body!
+cookie
 text
 html
 json
@@ -50,6 +51,7 @@ reqfile
 setcookie
 secure_cookie
 set_secure_cookie
+next
 set!
 Base.get(ctx::Context, key::AbstractString, default = nothing)
 Base.get(ctx::Context, key::Symbol, default = nothing)

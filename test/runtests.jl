@@ -288,7 +288,7 @@ end
     use(app, "/admin/*") do ctx
         push!(events, "auth:" * String(HTTP.URIs.URI(ctx.target).path))
         push!(events, "tail:" * ctx.params["*"])
-        ctx.next()
+        next(ctx)
     end
 
     get(app, "/admin/settings") do ctx
@@ -320,12 +320,12 @@ end
 
     use(app) do ctx
         push!(events, "global:" * String(HTTP.URIs.URI(ctx.target).path))
-        ctx.next()
+        next(ctx)
     end
 
     use(app, "/api") do ctx
         push!(events, "api:" * get(ctx.params, "*", ""))
-        ctx.next()
+        next(ctx)
     end
 
     get(app, "/api/users") do ctx
@@ -343,8 +343,8 @@ end
 
     bad_app = App()
     use(bad_app) do ctx
-        ctx.next()
-        ctx.next()
+        next(ctx)
+        next(ctx)
     end
     get(bad_app, "/boom") do ctx
         "ok"
@@ -364,7 +364,7 @@ end
 
     use(app, "/ctx/*") do ctx
         header!(ctx, "X-Middleware", "on")
-        ctx.next()
+        next(ctx)
     end
 
     get(app, "/ctx/html") do ctx
@@ -396,7 +396,7 @@ end
     app.renderer = (template, data) -> replace(template, "{{name}}" => string(data["name"]))
 
     get(app, "/inline") do ctx
-        ctx.render_text("hello {{name}}", Dict("name" => "inochi"))
+        render_text(ctx, "hello {{name}}", Dict("name" => "inochi"))
     end
 
     inline_response = Inochi.dispatch(app, HTTP.Request("GET", "/inline"))
@@ -409,7 +409,7 @@ end
         write(joinpath(tmpdir, "hello.mustache"), "<h1>{{name}}</h1>")
 
         get(app, "/file") do ctx
-            ctx.render("hello.mustache", Dict("name" => "Inochi"))
+            render(ctx, "hello.mustache", Dict("name" => "Inochi"))
         end
 
         file_response = Inochi.dispatch(app, HTTP.Request("GET", "/file"))
@@ -427,9 +427,10 @@ end
 
             default_views_app = App()
             default_views_app.renderer = (template, data) -> replace(template, "{{name}}" => string(data["name"]))
+            default_views_app.views = joinpath(pwd(), "views")
 
             get(default_views_app, "/default-views") do ctx
-                ctx.render("default.mustache", Dict("name" => "default"))
+                render(ctx, "default.mustache", Dict("name" => "default"))
             end
 
             default_views_response = Inochi.dispatch(default_views_app, HTTP.Request("GET", "/default-views"))
@@ -449,7 +450,7 @@ end
         file_renderer_app.views = tmpdir
         write(joinpath(tmpdir, "hello.mustache"), "ignored")
         get(file_renderer_app, "/file-renderer") do ctx
-            ctx.render("hello.mustache", Dict("name" => "cached"))
+            render(ctx, "hello.mustache", Dict("name" => "cached"))
         end
 
         response = Inochi.dispatch(file_renderer_app, HTTP.Request("GET", "/file-renderer"))
@@ -462,21 +463,21 @@ end
     app = App()
 
     post(app, "/text") do ctx
-        text(ctx, ctx.reqtext())
+        text(ctx, reqtext(ctx))
     end
 
     post(app, "/json") do ctx
-        payload = ctx.reqjson()
+        payload = reqjson(ctx)
         text(ctx, string(payload["name"], ":", payload["count"]))
     end
 
     post(app, "/form") do ctx
-        form = ctx.reqform()
+        form = reqform(ctx)
         text(ctx, string(form["x"], ":", form["y"]))
     end
 
     get(app, "/query") do ctx
-        query = ctx.reqquery()
+        query = reqquery(ctx)
         text(ctx, string(query["page"], ":", query["q"]))
     end
 
@@ -543,26 +544,25 @@ end
     @test file_part.name == "image"
     @test file_part.contenttype == "image/jpeg"
     @test reqfile(multipart_ctx; name = "missing") === nothing
-    ctx_file_part = multipart_ctx.reqfile(name = "image")
+    ctx_file_part = reqfile(multipart_ctx; name = "image")
     @test ctx_file_part !== nothing
     @test ctx_file_part.filename == "pixel.jpg"
-    @test length(multipart_ctx.reqmultipart()) == 2
+    @test length(reqmultipart(multipart_ctx)) == 2
 
     bad_multipart_ctx = Context(parser_app, HTTP.Request("POST", "/upload", ["Content-Type" => "application/json"], "{}"))
     @test_throws ArgumentError reqmultipart(bad_multipart_ctx)
-    @test_throws ArgumentError bad_multipart_ctx.reqmultipart()
 end
 
 @testset "Cookies" begin
     app = App()
 
     get(app, "/cookie") do ctx
-        text(ctx, ctx.cookie("session", "missing") * ":" * ctx.cookie["theme"])
+        text(ctx, cookie(ctx, "session", "missing") * ":" * cookie(ctx)["theme"])
     end
 
     get(app, "/set-cookie") do ctx
-        ctx.setcookie("session", "abc"; path = "/", httponly = true)
-        ctx.setcookie("theme", "dark"; maxage = 60)
+        setcookie(ctx, "session", "abc"; path = "/", httponly = true)
+        setcookie(ctx, "theme", "dark"; maxage = 60)
         text(ctx, "ok")
     end
 
@@ -919,7 +919,7 @@ end
     custom_app = App()
 
     use(custom_app, "/fail") do ctx
-        ctx.next()
+        next(ctx)
     end
 
     get(custom_app, "/fail") do ctx
@@ -1012,7 +1012,7 @@ end
 
     use(admin) do ctx
         push!(events, "mw:" * String(HTTP.URIs.URI(ctx.target).path))
-        ctx.next()
+        next(ctx)
     end
 
     get(admin, "/") do ctx

@@ -54,34 +54,6 @@ end
 function Base.getproperty(ctx::Context, name::Symbol)
     if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state, :varies_on_cookie, :next_handler, :backtrace)
         return getfield(ctx, name)
-    elseif name == :cookie
-        return CookieAccessor(ctx)
-    elseif name == :setcookie
-        return (args...; kwargs...) -> setcookie(ctx, args...; kwargs...)
-    elseif name == :reqtext
-        return () -> reqtext(ctx)
-    elseif name == :reqjson
-        return () -> reqjson(ctx)
-    elseif name == :reqform
-        return () -> reqform(ctx)
-    elseif name == :reqquery
-        return () -> reqquery(ctx)
-    elseif name == :reqmultipart
-        return () -> reqmultipart(ctx)
-    elseif name == :reqfile
-        return function (; name = nothing)
-            return reqfile(ctx; name = name)
-        end
-    elseif name == :next
-        return function ()
-            next_handler = getfield(ctx, :next_handler)
-            next_handler === nothing && throw(ArgumentError("next() is only available inside middleware"))
-            return next_handler()
-        end
-    elseif name == :render
-        return (filename, data = Dict{String,Any}()) -> render(ctx, filename, data)
-    elseif name == :render_text
-        return (template, data = Dict{String,Any}()) -> render_text(ctx, template, data)
     end
     return getproperty(getfield(ctx, :req), name)
 end
@@ -140,6 +112,15 @@ function setcookie(ctx::Context, name::AbstractString, value; kwargs...)::Contex
     return ctx
 end
 
+"""
+    cookie(ctx)
+    cookie(ctx, key, default = nothing)
+
+Return a request cookie accessor, or read a request cookie directly.
+"""
+cookie(ctx::Context) = CookieAccessor(ctx)
+cookie(ctx::Context, key::AbstractString, default = nothing) = cookie(ctx)(key, default)
+
 function app_config_string(app::App, key::AbstractString)::Union{Nothing,String}
     value = get(app.config, String(key), nothing)
     return value isa String ? value : nothing
@@ -170,7 +151,7 @@ end
 Read and verify a signed cookie formatted as `<BASE64>.<HMAC>`.
 """
 function secure_cookie(ctx::Context, name::AbstractString; secret = nothing, default = nothing)
-    raw_value = ctx.cookie(String(name), nothing)
+    raw_value = cookie(ctx, String(name), nothing)
     raw_value === nothing && return default
 
     parts = split(raw_value, '.'; limit = 2)
@@ -339,6 +320,17 @@ function render(ctx::Context, filename::AbstractString, data = Dict{String,Any}(
     isfile(template_path) || throw(ArgumentError("Template not found: " * String(filename)))
     rendered = resolve_file_renderer(ctx)(template_path, data)
     return html(ctx, String(rendered))
+end
+
+"""
+    next(ctx)
+
+Continue to the next middleware or final route.
+"""
+function next(ctx::Context)
+    next_handler = getfield(ctx, :next_handler)
+    next_handler === nothing && throw(ArgumentError("next() is only available inside middleware"))
+    return next_handler()
 end
 
 """

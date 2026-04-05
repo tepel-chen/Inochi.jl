@@ -16,13 +16,13 @@ Key files:
 
 - `App()` setup
 - `get`, `post`, and dynamic params
-- `ctx.reqform()` for form posts
+- `reqform(ctx)` for form posts
 - `route(app, "/todos", todos_app)` for splitting a feature into a mounted sub app
 - `html(ctx, ...)` for HTML responses
 - `redirect(ctx, "/")` after mutations
 - `static(...)` for assets
 - `sendFile(...)` for a fixed page
-- `ctx.render(...)` with `IwaiEngine.jl` configured through `app.file_renderer`
+- `render(ctx, ...)` with `IwaiEngine.jl` configured through `app.file_renderer`
 
 ## Run It
 

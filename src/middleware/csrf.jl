@@ -29,7 +29,7 @@ function csrf_token(ctx::Context)::String
     token = get(ctx, :csrf_token, nothing)
     token isa AbstractString && return String(token)
 
-    existing = ctx.cookie(CSRF_COOKIE_NAME, nothing)
+    existing = cookie(ctx, CSRF_COOKIE_NAME, nothing)
     if existing isa AbstractString && !isempty(existing)
         resolved = String(existing)
         set!(ctx, :csrf_token, resolved)
@@ -69,19 +69,19 @@ function csrf(; cookie_name::AbstractString = CSRF_COOKIE_NAME, httponly::Bool =
 
     return function (ctx::Context)
         token = csrf_token(ctx)
-        existing = ctx.cookie(resolved_cookie_name, nothing)
+        existing = cookie(ctx, resolved_cookie_name, nothing)
         if !(existing isa AbstractString) || isempty(existing)
-            ctx.setcookie(resolved_cookie_name, token; httponly = httponly, secure = secure, samesite = resolved_samesite, path = String(path))
+            setcookie(ctx, resolved_cookie_name, token; httponly = httponly, secure = secure, samesite = resolved_samesite, path = String(path))
         end
         set!(ctx, :csrf_token, token)
 
         if uppercase(ctx.method) in SAFE_HTTP_METHODS
-            return ctx.next()
+            return next(ctx)
         end
 
         request_token = csrf_request_token(ctx)
         if request_token isa AbstractString && constant_time_equals(String(request_token), token)
-            return ctx.next()
+            return next(ctx)
         end
 
         status!(ctx, 403)

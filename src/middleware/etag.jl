@@ -6,7 +6,7 @@ returns `304 Not Modified` when `If-None-Match` matches.
 """
 function etag()
     return function (ctx::Context)
-        response = ctx.next()
+        response = next(ctx)
         existing = HTTP.header(response, ETAG_HEADER_NAME, "")
 
         if isempty(existing)
