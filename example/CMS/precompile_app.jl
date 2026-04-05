@@ -29,5 +29,5 @@ route(app, "/", auth_app)
 route(app, "/post", build_posts_app(store))
 route(app, "/admin", build_admin_app(store))
 get(app, "/") do ctx
-    ctx.render("pages/index.iwai", home_view(store, ctx))
+    render(ctx, "pages/index.iwai", home_view(store, ctx))
 end

@@ -26,6 +26,6 @@ function csp_middleware()
         header!(ctx, "Referrer-Policy", "strict-origin-when-cross-origin")
         header!(ctx, "X-Content-Type-Options", "nosniff")
         header!(ctx, "X-Frame-Options", "DENY")
-        return ctx.next()
+        return next(ctx)
     end
 end

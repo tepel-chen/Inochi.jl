@@ -44,7 +44,7 @@ route(app, "/post", posts_app)
 route(app, "/admin", admin_app)
 
 get(app, "/") do ctx
-    ctx.render("pages/index.iwai", home_view(STORE, ctx))
+    render(ctx, "pages/index.iwai", home_view(STORE, ctx))
 end
 
 const HOST = get(ENV, "HOST", "127.0.0.1")

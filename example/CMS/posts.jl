@@ -7,7 +7,7 @@ function build_posts_app(store::CMSStore)::App
         post === nothing && return text(ctx, "Post not found"; status = 404)
         post.published || current_user(ctx) !== nothing || return text(ctx, "Draft not found"; status = 404)
         increment_views!(store, post)
-        return ctx.render("posts/show.iwai", post_detail_view(store, ctx, post))
+        return render(ctx, "posts/show.iwai", post_detail_view(store, ctx, post))
     end
 
     post(app, "/:id/comments") do ctx
@@ -16,9 +16,9 @@ function build_posts_app(store::CMSStore)::App
         post_id = Base.parse(Int, ctx.params["id"])
         post = find_post(store, post_id)
         post === nothing && return text(ctx, "Post not found"; status = 404)
-        form = ctx.reqform()
+        form = reqform(ctx)
         body = strip(get(form, "body", ""))
-        isempty(body) && return ctx.render("posts/show.iwai", post_detail_view(store, ctx, post; error = "Comment body is required."))
+        isempty(body) && return render(ctx, "posts/show.iwai", post_detail_view(store, ctx, post; error = "Comment body is required."))
         create_comment!(store; post_id = post.id, user_id = user.id, body = body)
         return redirect(ctx, "/post/" * string(post.id))
     end

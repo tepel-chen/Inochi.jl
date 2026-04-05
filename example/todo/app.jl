@@ -29,7 +29,7 @@ get(app, "/static/*", static(joinpath(@__DIR__, "public")))
 route(app, "/todos", todos_app)
 
 get(app, "/") do ctx
-    ctx.render("index.iwai", render_index_data(STORE))
+    render(ctx, "index.iwai", render_index_data(STORE))
 end
 
 get(app, "/about") do ctx

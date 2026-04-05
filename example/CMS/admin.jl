@@ -76,20 +76,20 @@ function build_admin_app(store::CMSStore)::App
     end
 
     get(app, "/dashboard") do ctx
-        ctx.render("admin/dashboard.iwai", admin_dashboard_view(store, ctx))
+        render(ctx, "admin/dashboard.iwai", admin_dashboard_view(store, ctx))
     end
 
     get(app, "/posts") do ctx
-        ctx.render("admin/posts/index.iwai", admin_posts_view(store, ctx))
+        render(ctx, "admin/posts/index.iwai", admin_posts_view(store, ctx))
     end
 
     get(app, "/posts/new/edit") do ctx
-        ctx.render("admin/posts/edit.iwai", admin_post_editor_view(store, ctx, nothing))
+        render(ctx, "admin/posts/edit.iwai", admin_post_editor_view(store, ctx, nothing))
     end
 
     post(app, "/posts/image-upload") do ctx
         try
-            file_part = ctx.reqfile(name = "image")
+            file_part = reqfile(ctx; name = "image")
             file_part === nothing && return text(ctx, "Image file is required"; status = 400)
             return save_uploaded_image!(store, ctx, file_part)
         catch err
@@ -112,9 +112,9 @@ function build_admin_app(store::CMSStore)::App
 
     post(app, "/posts/new") do ctx
         user = current_user(ctx)
-        form = ctx.reqform()
+        form = reqform(ctx)
         title = strip(get(form, "title", ""))
-        isempty(title) && return ctx.render("admin/posts/edit.iwai", admin_post_editor_view(store, ctx, nothing; error = "Title is required."))
+        isempty(title) && return render(ctx, "admin/posts/edit.iwai", admin_post_editor_view(store, ctx, nothing; error = "Title is required."))
         post = create_post!(
             store;
             author_id = user.id,
@@ -130,23 +130,23 @@ function build_admin_app(store::CMSStore)::App
         post_id = parse_post_id(ctx)
         post = post_id === nothing ? nothing : find_post(store, post_id)
         post === nothing && return text(ctx, "Post not found"; status = 404)
-        return ctx.render("admin/posts/detail.iwai", admin_post_detail_view(store, ctx, post))
+        return render(ctx, "admin/posts/detail.iwai", admin_post_detail_view(store, ctx, post))
     end
 
     get(app, "/posts/:id/edit") do ctx
         post_id = parse_post_id(ctx)
         post = post_id === nothing ? nothing : find_post(store, post_id)
         post === nothing && return text(ctx, "Post not found"; status = 404)
-        return ctx.render("admin/posts/edit.iwai", admin_post_editor_view(store, ctx, post))
+        return render(ctx, "admin/posts/edit.iwai", admin_post_editor_view(store, ctx, post))
     end
 
     post(app, "/posts/:id/update") do ctx
         post_id = parse_post_id(ctx)
         post = post_id === nothing ? nothing : find_post(store, post_id)
         post === nothing && return text(ctx, "Post not found"; status = 404)
-        form = ctx.reqform()
+        form = reqform(ctx)
         title = strip(get(form, "title", ""))
-        isempty(title) && return ctx.render("admin/posts/edit.iwai", admin_post_editor_view(store, ctx, post; error = "Title is required."))
+        isempty(title) && return render(ctx, "admin/posts/edit.iwai", admin_post_editor_view(store, ctx, post; error = "Title is required."))
         update_post!(
             store,
             post;
@@ -159,25 +159,25 @@ function build_admin_app(store::CMSStore)::App
     end
 
     get(app, "/users") do ctx
-        ctx.render("admin/users/index.iwai", admin_users_view(store, ctx))
+        render(ctx, "admin/users/index.iwai", admin_users_view(store, ctx))
     end
 
     get(app, "/users/:id/detail") do ctx
         user_id = parse_post_id(ctx)
         user = user_id === nothing ? nothing : find_user(store, user_id)
         user === nothing && return text(ctx, "User not found"; status = 404)
-        return ctx.render("admin/users/detail.iwai", admin_user_detail_view(store, ctx, user))
+        return render(ctx, "admin/users/detail.iwai", admin_user_detail_view(store, ctx, user))
     end
 
     get(app, "/files") do ctx
-        ctx.render("admin/files/index.iwai", admin_files_view(store, ctx))
+        render(ctx, "admin/files/index.iwai", admin_files_view(store, ctx))
     end
 
     get(app, "/files/:id/detail") do ctx
         file_id = parse_post_id(ctx)
         file = file_id === nothing ? nothing : find_file(store, file_id)
         file === nothing && return text(ctx, "File not found"; status = 404)
-        return ctx.render("admin/files/detail.iwai", admin_file_detail_view(store, ctx, file))
+        return render(ctx, "admin/files/detail.iwai", admin_file_detail_view(store, ctx, file))
     end
 
     return app

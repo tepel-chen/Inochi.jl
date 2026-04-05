@@ -2,7 +2,7 @@ function build_todos_app(store::TodoStore)::App
     app = App()
 
     post(app, "/") do ctx
-        form = ctx.reqform()
+        form = reqform(ctx)
         title = strip(get(form, "title", ""))
 
         if !isempty(title)
