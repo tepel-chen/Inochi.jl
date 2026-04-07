@@ -22,10 +22,6 @@ function on_error(handler::Function, app::App)::App
     return app
 end
 
-function on_error(app::App, handler::Function)::App
-    return on_error(handler, app)
-end
-
 """
     on_notfound(app) do ctx
         ...
@@ -36,10 +32,6 @@ Register an application-wide 404 handler. The handler receives `ctx`.
 function on_notfound(handler::Function, app::App)::App
     app.notfound_handler = handler
     return app
-end
-
-function on_notfound(app::App, handler::Function)::App
-    return on_notfound(handler, app)
 end
 
 function register_route!(app::App, method::AbstractString, path::AbstractString, handler::Function; force_middleware::Bool = false)::App
@@ -433,7 +425,7 @@ function matched_route_index(matched::RegexMatch)
     for (index, capture) in enumerate(matched.captures)
         capture isa AbstractString && isempty(capture) && return index
     end
-    @assert false "internal route matcher inconsistency"
+    return 1
 end
 
 function extract_params(matched::RegexMatch, route::DynamicRoute)::RouteParams

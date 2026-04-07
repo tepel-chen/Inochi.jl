@@ -39,8 +39,6 @@ function etag_for_bytes(bytes::Vector{UInt8})::String
     return "\"" * bytes2hex(sha1(bytes)) * "\""
 end
 
-etag_for_bytes(text::AbstractString)::String = etag_for_bytes(Vector{UInt8}(codeunits(text)))
-
 function etag_for_file(path::AbstractString)::String
     info = stat(path)
     size_hex = string(info.size; base = 16)
