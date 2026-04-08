@@ -10,6 +10,9 @@ using SHA
 using Dates
 using Printf
 using Random
+using RuntimeGeneratedFunctions
+
+RuntimeGeneratedFunctions.init(@__MODULE__)
 
 const INOCHI_VERSION = string(pkgversion(@__MODULE__))
 const JULIA_VERSION = string(VERSION)

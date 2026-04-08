@@ -48,7 +48,7 @@ end
     @test HTTP.header(response, "Vary") == "Origin"
 end
 
-@testset "Regex Router" begin
+@testset "AST Router" begin
     app = App()
 
     get(app, "/users/:id") do params
@@ -82,12 +82,13 @@ end
     response4 = Inochi.dispatch(app, HTTP.Request("GET", "/static/css/app.css"))
     @test response4.status == 200
     @test String(response4.body) == "css/app.css"
-    @test Inochi.matched_route_index(match(r"(a)", "a")) == 1
 
     @test app.dirty == false
     matcher = app.matchers["GET"]
-    @test matcher.regex !== nothing
     @test haskey(matcher.static_map, "/users/me")
+    @test Inochi.match_final_route(matcher, "/users/42").params["id"] == "42"
+    @test Inochi.match_final_route(matcher, "/users/42/comments/7").params["comment_id"] == "7"
+    @test Inochi.match_final_route(matcher, "/static/css/app.css").params["*"] == "css/app.css"
 end
 
 @testset "Benchmark Route Set" begin

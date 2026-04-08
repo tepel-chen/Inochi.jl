@@ -15,10 +15,19 @@ end
 struct DynamicRoute
     handler::Function
     path::String
+    segments::Vector{String}
     param_names::Vector{String}
-    param_capture_indexes::Vector{Int}
     is_middleware::Bool
 end
+
+mutable struct RouteTrieNode
+    static_children::Vector{Pair{String,RouteTrieNode}}
+    param_child::Union{Nothing,RouteTrieNode}
+    terminal_routes::Vector{DynamicRoute}
+    wildcard_routes::Vector{DynamicRoute}
+end
+
+RouteTrieNode() = RouteTrieNode(Pair{String,RouteTrieNode}[], nothing, DynamicRoute[], DynamicRoute[])
 
 struct StaticRoute
     handler::Function
@@ -26,9 +35,14 @@ struct StaticRoute
     is_middleware::Bool
 end
 
+struct MatchedRoute
+    handler::Function
+    path::String
+    params::RouteParams
+end
+
 struct MethodMatcher
-    regex::Union{Regex,Nothing}
-    route_lookup::Dict{Int,DynamicRoute}
+    dynamic_matcher::Function
     static_map::Dict{String,StaticRoute}
 end
 

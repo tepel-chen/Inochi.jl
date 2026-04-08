@@ -74,25 +74,14 @@ const APP = register_benchmark_routes!()
 function match_mode(method::String, path::String)
     matcher = Inochi.get_matcher(APP, method)
     haskey(matcher.static_map, path) && return "map"
-    return "regex"
+    return "ast"
 end
 
 function run_match(method::String, path::String)
     matcher = Inochi.get_matcher(APP, method)
-
-    static_handler = get(matcher.static_map, path, nothing)
-    if static_handler !== nothing
-        return static_handler
-    end
-
-    matcher.regex === nothing && error("No route matched $method $path")
-    matched = match(matcher.regex, path)
-    matched === nothing && error("No route matched $method $path")
-
-    route_index = Inochi.matched_route_index(matched)
-    route = matcher.route_lookup[route_index]
-    Inochi.extract_params(matched, route)
-    return route
+    result = Inochi.match_final_route(matcher, path)
+    result === nothing && error("No route matched $method $path")
+    return result
 end
 
 function benchmark_case(method::String, path::String)

@@ -286,15 +286,15 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
     path = normalize_path(String(HTTP.URIs.URI(req.target).path))
     matcher = get_matcher(app, req.method)
     final_match = match_final_route(matcher, path)
-    base_params = final_match === nothing ? RouteParams() : final_match.params
+    base_params = final_match === nothing ? RouteParams() : matched_params(final_match)
     ctx = Context(app, req; params = base_params)
     middleware_stack = collect_middlewares(app, req.method, path, final_match)
 
     try
         function final_handler()
             final_match === nothing && return handle_notfound(app, ctx)
-            ctx.params = final_match.params
-            return to_response(final_match.handler(ctx), ctx)
+            ctx.params = matched_params(final_match)
+            return to_response(matched_handler(final_match)(ctx), ctx)
         end
 
         return run_middlewares(middleware_stack, ctx, final_handler)
@@ -309,25 +309,27 @@ function get_matcher(app::App, method::AbstractString)::MethodMatcher
     return get(app.matchers, uppercase(String(method)), EMPTY_METHOD_MATCHER)
 end
 
-const EMPTY_METHOD_MATCHER = MethodMatcher(nothing, Dict{Int,DynamicRoute}(), Dict{String,StaticRoute}())
+@noinline function empty_dynamic_matcher(path::String)
+    return nothing
+end
+
+const EMPTY_METHOD_MATCHER = MethodMatcher(empty_dynamic_matcher, Dict{String,StaticRoute}())
 
 function match_final_route(matcher::MethodMatcher, path::String)
     static_route = get(matcher.static_map, path, nothing)
     if static_route !== nothing
-        return (; handler = static_route.handler, path = static_route.path, params = RouteParams())
+        return static_route
     end
 
-    matcher.regex === nothing && return nothing
-    matched = match(matcher.regex, path)
-    matched === nothing && return nothing
-
-    route_index = matched_route_index(matched)
-    route_index === nothing && return nothing
-
-    route = matcher.route_lookup[route_index]
-    params = extract_params(matched, route)
-    return (; handler = route.handler, path = route.path, params = params)
+    return matcher.dynamic_matcher(path)
 end
+
+@inline matched_handler(match::StaticRoute) = match.handler
+@inline matched_handler(match::MatchedRoute) = match.handler
+@inline matched_path(match::StaticRoute) = match.path
+@inline matched_path(match::MatchedRoute) = match.path
+@inline matched_params(::StaticRoute) = RouteParams()
+@inline matched_params(match::MatchedRoute) = match.params
 
 function compile_routes!(app::App)::App
     grouped_routes = Dict{String,Vector{RouteDefinition}}()
@@ -355,9 +357,7 @@ end
 
 function build_method_matcher(routes::Vector{RouteDefinition})::MethodMatcher
     static_map = Dict{String,StaticRoute}()
-    route_lookup = Dict{Int,DynamicRoute}()
-    dynamic_patterns = String[]
-    capture_index = 0
+    dynamic_routes = DynamicRoute[]
 
     for route in routes
         route.is_middleware && continue
@@ -368,73 +368,229 @@ function build_method_matcher(routes::Vector{RouteDefinition})::MethodMatcher
             continue
         end
 
-        sentinel_index = capture_index + 1
-        capture_index += 1
-
-        param_capture_indexes = Int[]
-        for _ in parsed.param_names
-            capture_index += 1
-            push!(param_capture_indexes, capture_index)
-        end
-
-        route_lookup[sentinel_index] = DynamicRoute(route.handler, route.path, parsed.param_names, param_capture_indexes, route.is_middleware)
-        push!(dynamic_patterns, "(?:" * "()" * parsed.pattern * ")")
+        push!(
+            dynamic_routes,
+            DynamicRoute(route.handler, route.path, parsed.segments, parsed.param_names, route.is_middleware),
+        )
     end
 
-    regex = isempty(dynamic_patterns) ? nothing : Regex("^(?:" * join(dynamic_patterns, "|") * ")\$")
-    return MethodMatcher(regex, route_lookup, static_map)
+    dynamic_matcher = compile_dynamic_matcher(dynamic_routes)
+    return MethodMatcher(dynamic_matcher, static_map)
 end
 
 function parse_route_pattern(path::String)
     parts = split(path, '/', keepempty = false)
     if isempty(parts)
-        return (static = true, pattern = "/", param_names = String[])
+        return (static = true, segments = String[], param_names = String[])
     end
 
-    regex_parts = String[]
+    segments = String[]
     param_names = String[]
     is_static = true
 
     for part in parts
+        push!(segments, String(part))
         if startswith(part, ":")
             is_static = false
             push!(param_names, part[2:end])
-            push!(regex_parts, "([^/]+)")
         elseif part == "*"
             is_static = false
             push!(param_names, "*")
-            push!(regex_parts, "(.*)")
-        else
-            push!(regex_parts, escape_regex_literal(part))
         end
     end
 
-    return (
-        static = is_static,
-        pattern = "/" * join(regex_parts, "/"),
-        param_names = param_names,
+    return (static = is_static, segments = segments, param_names = param_names)
+end
+
+function compile_dynamic_matcher(routes::Vector{DynamicRoute})::Function
+    if isempty(routes)
+        return empty_dynamic_matcher
+    end
+
+    trie = build_route_trie(routes)
+    fn_expr = :((path::String) -> begin
+        last = lastindex(path)
+        index = route_start_index(path)
+        $(trie_match_expression(trie))
+        return nothing
+    end)
+
+    return RuntimeGeneratedFunctions.RuntimeGeneratedFunction(@__MODULE__, @__MODULE__, fn_expr)
+end
+
+function build_route_trie(routes::Vector{DynamicRoute})::RouteTrieNode
+    root = RouteTrieNode()
+    for route in routes
+        insert_route!(root, route)
+    end
+    return root
+end
+
+function insert_route!(root::RouteTrieNode, route::DynamicRoute)
+    node = root
+    for segment in route.segments
+        if segment == "*"
+            push!(node.wildcard_routes, route)
+            return
+        elseif startswith(segment, ":")
+            node.param_child === nothing && (node.param_child = RouteTrieNode())
+            node = node.param_child::RouteTrieNode
+        else
+            node = get_or_create_static_child!(node, segment)
+        end
+    end
+    push!(node.terminal_routes, route)
+end
+
+function get_or_create_static_child!(node::RouteTrieNode, segment::String)::RouteTrieNode
+    for child in node.static_children
+        child.first == segment && return child.second
+    end
+
+    child = RouteTrieNode()
+    push!(node.static_children, segment => child)
+    return child
+end
+
+function trie_match_expression(node::RouteTrieNode, capture_syms::Vector{Symbol} = Symbol[])
+    ended_branch = Any[]
+    if !isempty(node.terminal_routes)
+        push!(ended_branch, terminal_routes_expression(node, capture_syms))
+    end
+    if !isempty(node.wildcard_routes)
+        push!(ended_branch, wildcard_routes_expression(node, capture_syms, :index, :last))
+    end
+    push!(ended_branch, :(nothing))
+
+    body = trie_node_body_expression(node, capture_syms)
+    return Expr(
+        :block,
+        quote
+            if index > last
+                $(Expr(:block, ended_branch...))
+            else
+                $body
+            end
+        end,
     )
 end
 
-function escape_regex_literal(value::AbstractString)::String
-    escaped = replace(String(value), r"([.^$|()\[\]{}*+?\\-])" => s"\\\1")
-    return escaped
+function trie_node_body_expression(node::RouteTrieNode, capture_syms::Vector{Symbol})
+    inner = Any[
+        :(seg_start = bounds[1]),
+        :(seg_stop = bounds[2]),
+        :(next_index = bounds[3]),
+        :(segment = SubString(path, seg_start, seg_stop)),
+    ]
+
+    for (literal, child) in node.static_children
+        push!(
+            inner,
+            quote
+                if segment == $(literal)
+                    index = next_index
+                    $(trie_match_expression(child, capture_syms))
+                end
+            end,
+        )
+    end
+
+    if node.param_child !== nothing
+        capture = gensym(:param)
+        next_capture_syms = copy(capture_syms)
+        push!(next_capture_syms, capture)
+        push!(
+            inner,
+            quote
+                $capture = segment
+                index = next_index
+                $(trie_match_expression(node.param_child::RouteTrieNode, next_capture_syms))
+            end,
+        )
+    end
+
+    if !isempty(node.wildcard_routes)
+        push!(inner, wildcard_routes_expression(node, capture_syms, :index, :last))
+    end
+
+    push!(inner, :(nothing))
+    return Expr(
+        :block,
+        :(bounds = segment_bounds(path, index)),
+        quote
+            if bounds === nothing
+                nothing
+            else
+                $(Expr(:block, inner...))
+            end
+        end,
+    )
 end
 
-function matched_route_index(matched::RegexMatch)
-    for (index, capture) in enumerate(matched.captures)
-        capture isa AbstractString && isempty(capture) && return index
+function terminal_routes_expression(node::RouteTrieNode, capture_syms::Vector{Symbol})
+    statements = Any[]
+    for route in node.terminal_routes
+        push!(statements, route_return_expression(route, capture_syms))
     end
-    return 1
+    return Expr(:block, statements...)
 end
 
-function extract_params(matched::RegexMatch, route::DynamicRoute)::RouteParams
-    params = RouteParams()
-    for (name, capture_index) in zip(route.param_names, route.param_capture_indexes)
-        capture = matched.captures[capture_index]
-        params[name] = capture === nothing ? "" : capture
+function wildcard_routes_expression(node::RouteTrieNode, capture_syms::Vector{Symbol}, index_sym::Symbol, last_sym::Symbol)
+    statements = Any[]
+    for route in node.wildcard_routes
+        wildcard_capture = gensym(:wildcard)
+        next_capture_syms = copy(capture_syms)
+        push!(next_capture_syms, wildcard_capture)
+        push!(statements, route_wildcard_expression(route, next_capture_syms, wildcard_capture, index_sym, last_sym))
     end
-    return params
+    return Expr(:block, statements...)
+end
+
+function route_return_expression(route::DynamicRoute, capture_syms::Vector{Symbol})
+    params_exprs = [:(params[$(name)] = String($sym)) for (name, sym) in zip(route.param_names, capture_syms)]
+    return quote
+        params = RouteParams()
+        sizehint!(params, $(length(route.param_names)))
+        $(Expr(:block, params_exprs...))
+        return MatchedRoute($(route.handler), $(route.path), params)
+    end
+end
+
+function route_wildcard_expression(
+    route::DynamicRoute,
+    capture_syms::Vector{Symbol},
+    wildcard_capture::Symbol,
+    index_sym::Symbol,
+    last_sym::Symbol,
+)
+    params_exprs = [:(params[$(name)] = String($sym)) for (name, sym) in zip(route.param_names, capture_syms)]
+    return quote
+        $wildcard_capture = if $index_sym > $last_sym
+            ""
+        else
+            SubString(path, $index_sym, $last_sym)
+        end
+        params = RouteParams()
+        sizehint!(params, $(length(route.param_names)))
+        $(Expr(:block, params_exprs...))
+        return MatchedRoute($(route.handler), $(route.path), params)
+    end
+end
+
+@inline function segment_bounds(path::String, index::Int)
+    last = lastindex(path)
+    index > last && return nothing
+    path[index] == '/' && return nothing
+
+    slash = findnext(==('/'), path, index)
+    stop = slash === nothing ? last : prevind(path, slash)
+    next_index = slash === nothing ? last + 1 : nextind(path, slash)
+    return (index, stop, next_index, slash !== nothing)
+end
+
+@inline function route_start_index(path::String)
+    first = firstindex(path)
+    return nextind(path, first)
 end
 
 function run_middlewares(middlewares, ctx::Context, final_handler::Function, index::Int = 1)::HTTP.Response
