@@ -1,0 +1,7 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+Inochi = "9a13a925-b8a3-4980-966f-8cdb6f2f6ab3"
+
+[sources]
+Inochi = {path = ".."}
