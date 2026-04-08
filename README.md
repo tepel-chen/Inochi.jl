@@ -21,7 +21,7 @@ start(app)
 
 Published docs:
 
-- https://tepel-chen.github.io/Inochi.jl/
+- https://tepel-chen.github.io/Inochi.jl/dev/
 
 Documenter-compatible docs live in `docs/`.
 
