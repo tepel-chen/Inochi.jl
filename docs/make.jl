@@ -18,3 +18,11 @@ makedocs(;
         "API" => "api.md",
     ],
 )
+
+deploydocs(;
+    repo = "github.com/tepel-chen/Inochi.jl.git",
+    deploy_repo = "github.com/tepel-chen/tepel-chen.github.io.git",
+    dirname = "Inochi.jl",
+    devbranch = "main",
+    versions = ["stable" => "v^", "dev" => "dev"],
+)
