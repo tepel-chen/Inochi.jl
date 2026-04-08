@@ -35,13 +35,13 @@ end
     app = App()
     events = String[]
 
-    use(app) do ctx
-        push!(events, "global:" * String(HTTP.URIs.URI(ctx.target).path))
+    use(app, "/api") do ctx
+        push!(events, "api:" * get(ctx.params, "*", ""))
         next(ctx)
     end
 
-    use(app, "/api") do ctx
-        push!(events, "api:" * get(ctx.params, "*", ""))
+    use(app) do ctx
+        push!(events, "global:" * String(HTTP.URIs.URI(ctx.target).path))
         next(ctx)
     end
 

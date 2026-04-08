@@ -6,18 +6,21 @@ Request-scoped context passed to handlers and middleware.
 mutable struct Context
     app::App
     req::HTTP.Request
-    params::RouteParams
+    params::Any
     status::Int
     headers::Dict{String,String}
     body::Any
     cookies_out::Vector{HTTP.Cookies.Cookie}
     state::Dict{Symbol,Any}
     varies_on_cookie::Bool
-    next_handler::Union{Nothing,Function}
+    middleware_chain::Any
+    middleware_index::Int
+    middleware_called::Bool
+    final_match::Any
     backtrace::Any
 end
 
-function Context(app::App, req::HTTP.Request; params::RouteParams = RouteParams())
+function Context(app::App, req::HTTP.Request; params = RouteParams())
     return Context(
         app,
         req,
@@ -27,6 +30,9 @@ function Context(app::App, req::HTTP.Request; params::RouteParams = RouteParams(
         "",
         HTTP.Cookies.Cookie[],
         Dict{Symbol,Any}(),
+        false,
+        nothing,
+        1,
         false,
         nothing,
         nothing,
@@ -52,7 +58,22 @@ function (accessor::CookieAccessor)(key::AbstractString, default = nothing)
 end
 
 function Base.getproperty(ctx::Context, name::Symbol)
-    if name in (:app, :req, :params, :status, :headers, :body, :cookies_out, :state, :varies_on_cookie, :next_handler, :backtrace)
+    if name in (
+        :app,
+        :req,
+        :params,
+        :status,
+        :headers,
+        :body,
+        :cookies_out,
+        :state,
+        :varies_on_cookie,
+        :middleware_chain,
+        :middleware_index,
+        :middleware_called,
+        :final_match,
+        :backtrace,
+    )
         return getfield(ctx, name)
     end
     return getproperty(getfield(ctx, :req), name)
@@ -65,6 +86,9 @@ Base.getindex(ctx::Context, key::AbstractString) = ctx.params[String(key)]
 Read a route parameter from `ctx.params`.
 """
 Base.get(ctx::Context, key::AbstractString, default = nothing) = get(ctx.params, String(key), default)
+
+Base.getindex(params::MiddlewareParams, key::AbstractString) = key == "*" ? params.tail : throw(KeyError(key))
+Base.get(params::MiddlewareParams, key::AbstractString, default = nothing) = key == "*" ? params.tail : default
 
 """
     status!(ctx, code)
@@ -328,9 +352,12 @@ end
 Continue to the next middleware or final route.
 """
 function next(ctx::Context)
-    next_handler = getfield(ctx, :next_handler)
-    next_handler === nothing && throw(ArgumentError("next() is only available inside middleware"))
-    return next_handler()
+    middleware_chain = getfield(ctx, :middleware_chain)
+    middleware_chain === nothing && throw(ArgumentError("next() is only available inside middleware"))
+    ctx.middleware_called && throw(ArgumentError("next() may only be called once per middleware"))
+    ctx.middleware_called = true
+    ctx.middleware_index += 1
+    return continue_dispatch(ctx)
 end
 
 """
@@ -405,13 +432,23 @@ const SERVER_HEADER_VALUE = "Inochi/" * INOCHI_VERSION * " Julia/" * JULIA_VERSI
 const DATE_HEADER_NAME = "Date"
 const VARY_HEADER_NAME = "Vary"
 const DEFAULT_VARY_VALUE = "Origin"
+const HTTP_DATE_CACHE_KEYS = fill(typemin(Int64), Threads.nthreads())
+const HTTP_DATE_CACHE_VALUES = fill("", Threads.nthreads())
 
 function http_date(now::DateTime = now(UTC))::String
+    cache_index = Threads.threadid()
+    cache_key = Dates.value(now) ÷ 1000
+    if HTTP_DATE_CACHE_KEYS[cache_index] == cache_key
+        return HTTP_DATE_CACHE_VALUES[cache_index]
+    end
     weekdays = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     months = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
     weekday = weekdays[dayofweek(now)]
     month_name = months[month(now)]
-    return @sprintf("%s, %02d %s %04d %02d:%02d:%02d GMT", weekday, day(now), month_name, year(now), hour(now), minute(now), second(now))
+    value = @sprintf("%s, %02d %s %04d %02d:%02d:%02d GMT", weekday, day(now), month_name, year(now), hour(now), minute(now), second(now))
+    HTTP_DATE_CACHE_VALUES[cache_index] = value
+    HTTP_DATE_CACHE_KEYS[cache_index] = cache_key
+    return value
 end
 
 function merge_vary(existing::AbstractString, value::AbstractString)::String
@@ -438,9 +475,16 @@ function apply_default_headers(response::HTTP.Response, ctx::Union{Nothing,Conte
     HTTP.setheader(response, SERVER_HEADER_NAME => SERVER_HEADER_VALUE)
     HTTP.setheader(response, DATE_HEADER_NAME => http_date())
     existing_vary = HTTP.header(response, VARY_HEADER_NAME, "")
-    vary = merge_vary(existing_vary, DEFAULT_VARY_VALUE)
-    if ctx !== nothing && ctx.varies_on_cookie
-        vary = merge_vary(vary, "Cookie")
+    if isempty(existing_vary)
+        vary = DEFAULT_VARY_VALUE
+        if ctx !== nothing && ctx.varies_on_cookie
+            vary = DEFAULT_VARY_VALUE * ", Cookie"
+        end
+    else
+        vary = merge_vary(existing_vary, DEFAULT_VARY_VALUE)
+        if ctx !== nothing && ctx.varies_on_cookie
+            vary = merge_vary(vary, "Cookie")
+        end
     end
     HTTP.setheader(response, VARY_HEADER_NAME => vary)
     return response

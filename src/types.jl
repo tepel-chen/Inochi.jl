@@ -2,6 +2,7 @@
 Route parameter storage used by matched handlers and middleware.
 """
 const RouteParams = Dict{String,String}
+const EMPTY_ROUTE_PARAMS = Base.ImmutableDict{String,String}()
 const AppConfig = Dict{String,Union{String,Int}}
 const DEFAULT_MAX_CONTENT_SIZE = 4 * 1024 * 1024
 
@@ -12,12 +13,33 @@ struct RouteDefinition
     is_middleware::Bool
 end
 
+struct MiddlewareRoute
+    handler::Function
+    path::String
+    prefix::String
+    order::Int
+end
+
 struct DynamicRoute
     handler::Function
     path::String
     segments::Vector{String}
     param_names::Vector{String}
     is_middleware::Bool
+    middleware_routes::Vector{MiddlewareRoute}
+end
+
+struct MiddlewareMatch
+    handler::Function
+    path::String
+    params::Any
+    order::Int
+end
+
+const EMPTY_MIDDLEWARE_MATCHES = MiddlewareMatch[]
+
+struct MiddlewareParams
+    tail::String
 end
 
 mutable struct RouteTrieNode
@@ -29,16 +51,28 @@ end
 
 RouteTrieNode() = RouteTrieNode(Pair{String,RouteTrieNode}[], nothing, DynamicRoute[], DynamicRoute[])
 
+mutable struct MiddlewareTrieNode
+    static_children::Vector{Pair{String,MiddlewareTrieNode}}
+    terminal_routes::Vector{MiddlewareRoute}
+    ordered_routes::Vector{MiddlewareRoute}
+end
+
+MiddlewareTrieNode() = MiddlewareTrieNode(Pair{String,MiddlewareTrieNode}[], MiddlewareRoute[], MiddlewareRoute[])
+
+const EMPTY_MIDDLEWARE_ROUTES = MiddlewareRoute[]
+
 struct StaticRoute
     handler::Function
     path::String
     is_middleware::Bool
+    middleware_routes::Vector{MiddlewareRoute}
 end
 
 struct MatchedRoute
     handler::Function
     path::String
     params::RouteParams
+    middleware_routes::Vector{MiddlewareRoute}
 end
 
 struct MethodMatcher
@@ -46,9 +80,16 @@ struct MethodMatcher
     static_map::Dict{String,StaticRoute}
 end
 
+struct MiddlewareMatcher
+    global_routes::Vector{MiddlewareRoute}
+    route_count::Int
+    middleware_matcher::Function
+end
+
 mutable struct App
     routes::Vector{RouteDefinition}
     matchers::Dict{String,MethodMatcher}
+    middleware_matchers::Dict{String,MiddlewareMatcher}
     dirty::Bool
     error_handler::Union{Nothing,Function}
     notfound_handler::Union{Nothing,Function}
@@ -66,6 +107,7 @@ Create a new Inochi application.
 App() = App(
     RouteDefinition[],
     Dict{String,MethodMatcher}(),
+    Dict{String,MiddlewareMatcher}(),
     true,
     nothing,
     nothing,

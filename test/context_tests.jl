@@ -1,3 +1,5 @@
+using Dates
+
 @testset "Context" begin
     app = App()
 
@@ -33,6 +35,15 @@
     @test redirect_response.status == 303
     @test HTTP.header(redirect_response, "Location") == "/next"
     @test String(redirect_response.body) == ""
+end
+
+@testset "Date Header Cache" begin
+    timestamp = DateTime(2024, 1, 1, 0, 0, 0)
+    first = Inochi.http_date(timestamp)
+    second = Inochi.http_date(timestamp)
+
+    @test first == second
+    @test occursin(HTTP_DATE_PATTERN, first)
 end
 
 @testset "Rendering" begin

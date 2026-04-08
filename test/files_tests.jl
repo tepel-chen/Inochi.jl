@@ -53,6 +53,20 @@
         @test HTTP.header(response7, "ETag") == HTTP.header(response1, "ETag")
     end
 
+    mktempdir(@__DIR__) do tmpdir
+        assets_dir = joinpath(tmpdir, "static-root")
+        mkpath(assets_dir)
+        write(joinpath(assets_dir, "app.css"), "body { color: blue; }")
+
+        app = App()
+        get(static(assets_dir), app, "/assets/*")
+
+        response = Inochi.dispatch(app, HTTP.Request("GET", "/assets/app.css"))
+        @test response.status == 200
+        @test String(response.body) == "body { color: blue; }"
+        @test HTTP.header(response, "Content-Type") == "text/css; charset=utf-8"
+    end
+
     @test Inochi.executable_root() == normpath(isempty(Base.PROGRAM_FILE) ? pwd() : dirname(abspath(Base.PROGRAM_FILE)))
     @test Inochi.content_type_for_path("x.html") == "text/html; charset=utf-8"
     @test Inochi.content_type_for_path("x.css") == "text/css; charset=utf-8"
