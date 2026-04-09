@@ -133,8 +133,8 @@ end
 Store a raw `HTTP.Response` on the context and sync the visible status/body.
 """
 function response!(ctx::Context, response::HTTP.Response)::Context
-    setfield!(ctx, :response, response)
-    setfield!(ctx, :status, Int(response.status))
+    ctx.response = response
+    status!(ctx, response.status)
     body!(ctx, response.body)
     return ctx
 end
