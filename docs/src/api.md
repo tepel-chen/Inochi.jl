@@ -35,6 +35,7 @@ trace
 status!
 header!
 body!
+response!
 cookie
 text
 html

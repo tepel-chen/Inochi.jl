@@ -11,12 +11,14 @@ JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 MIMEs = "6c6e2e6c-3030-632d-7369-2d6c69616d65"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+RuntimeGeneratedFunctions = "7e49a35a-f44a-4d26-94aa-eba1b4ca6b47"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [compat]
 HTTP = "1"
 JSON = "1"
 MIMEs = "1.1.0"
+RuntimeGeneratedFunctions = "0.5.17"
 julia = "1.10.10"
 
 [extras]

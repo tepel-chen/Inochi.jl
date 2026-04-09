@@ -25,6 +25,10 @@
     @test request_response.status == 200
     @test String(request_response.body) == "GET:/with-request"
 
+    query_response = Inochi.dispatch(app, HTTP.Request("GET", "/with-request?x=1&y=2"))
+    @test query_response.status == 200
+    @test String(query_response.body) == "GET:/with-request"
+
     missing_response = Inochi.dispatch(app, HTTP.Request("GET", "/missing"))
     @test missing_response.status == 404
     @test String(missing_response.body) == "Not Found"
@@ -43,12 +47,12 @@ end
     response = Inochi.dispatch(app, HTTP.Request("GET", "/raw"))
     @test response.status == 201
     @test String(response.body) == "created"
-    @test HTTP.header(response, "Server") == EXPECTED_SERVER_HEADER
-    @test occursin(HTTP_DATE_PATTERN, HTTP.header(response, "Date"))
-    @test HTTP.header(response, "Vary") == "Origin"
+    @test HTTP.header(response, "Server", nothing) === nothing
+    @test HTTP.header(response, "Date", nothing) === nothing
+    @test HTTP.header(response, "Vary", nothing) === nothing
 end
 
-@testset "Regex Router" begin
+@testset "AST Router" begin
     app = App()
 
     get(app, "/users/:id") do params
@@ -82,12 +86,48 @@ end
     response4 = Inochi.dispatch(app, HTTP.Request("GET", "/static/css/app.css"))
     @test response4.status == 200
     @test String(response4.body) == "css/app.css"
-    @test Inochi.matched_route_index(match(r"(a)", "a")) == 1
+
+    response4b = Inochi.dispatch(app, HTTP.Request("GET", "/static/"))
+    @test response4b.status == 200
+    @test String(response4b.body) == ""
 
     @test app.dirty == false
     matcher = app.matchers["GET"]
-    @test matcher.regex !== nothing
     @test haskey(matcher.static_map, "/users/me")
+    @test Inochi.match_final_route(matcher, "/users/42").params["id"] == "42"
+    @test Inochi.match_final_route(matcher, "/users/42/comments/7").params["comment_id"] == "7"
+    @test Inochi.match_final_route(matcher, "/static/css/app.css").params["*"] == "css/app.css"
+    @test Inochi.dispatch(app, HTTP.Request("GET", "/users//oops")).status == 404
+end
+
+@testset "Routing Internals" begin
+    @test Inochi.normalize_middleware_prefix("/") == "/"
+    @test Inochi.normalize_middleware_prefix("/*") == "/"
+    @test Inochi.normalize_middleware_prefix("/api/*") == "/api"
+    @test Inochi.normalize_middleware_prefix("/api/") == "/api"
+
+    @test Inochi.build_middleware_matcher(Inochi.MiddlewareRoute[]) === Inochi.EMPTY_MIDDLEWARE_MATCHER
+
+    middleware_root = Inochi.MiddlewareTrieNode()
+    api_child_1 = Inochi.get_or_create_middleware_child!(middleware_root, "api")
+    api_child_2 = Inochi.get_or_create_middleware_child!(middleware_root, "api")
+    @test api_child_1 === api_child_2
+
+    app = App()
+    Inochi.register_route!(app, "GET", "/mw", ctx -> "mw"; force_middleware = true)
+    use(app, "/api") do ctx
+        next(ctx)
+    end
+    get(app, "/api/ping") do ctx
+        "pong"
+    end
+
+    response = Inochi.dispatch(app, HTTP.Request("GET", "/mw"))
+    @test response.status == 200
+    @test String(response.body) == "mw"
+
+    response2 = Inochi.dispatch(app, HTTP.Request("GET", "/api//oops"))
+    @test response2.status == 404
 end
 
 @testset "Benchmark Route Set" begin

@@ -63,6 +63,27 @@ get(app, "/manual") do ctx
 end
 ```
 
+For advanced cases, use `response!(ctx, ...)` to set a raw response on the
+context:
+
+```julia
+get(app, "/raw") do ctx
+    response!(ctx, HTTP.Response(202, "raw"))
+end
+```
+
+For a full escape hatch, return `HTTP.Response(...)` directly:
+
+```julia
+get(app, "/raw") do ctx
+    HTTP.Response(202, "raw")
+end
+```
+
+When a handler returns `HTTP.Response`, Inochi sends it as-is. The usual `ctx`
+helpers and default headers are skipped. `response!(ctx, ...)` is the same idea
+when you want to set a raw response from inside the handler body.
+
 ## Rendering
 
 `render(ctx, filename, data)` renders a file from `app.views`. `render_text(ctx, template, data)` renders an inline template string.

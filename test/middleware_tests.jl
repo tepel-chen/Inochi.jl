@@ -35,13 +35,13 @@ end
     app = App()
     events = String[]
 
-    use(app) do ctx
-        push!(events, "global:" * String(HTTP.URIs.URI(ctx.target).path))
+    use(app, "/api") do ctx
+        push!(events, "api:" * get(ctx.params, "*", ""))
         next(ctx)
     end
 
-    use(app, "/api") do ctx
-        push!(events, "api:" * get(ctx.params, "*", ""))
+    use(app) do ctx
+        push!(events, "global:" * String(HTTP.URIs.URI(ctx.target).path))
         next(ctx)
     end
 
@@ -93,23 +93,27 @@ end
     end
 
     get(app, "/bytes") do ctx
-        HTTP.Response(200, UInt8[0x68, 0x69])
+        UInt8[0x68, 0x69]
     end
 
     get(app, "/byteview") do ctx
         data = UInt8[0x68, 0x69, 0x21]
-        HTTP.Response(200, @view data[1:2])
+        @view data[1:2]
     end
 
     get(app, "/substring") do ctx
         text = "hello"
-        HTTP.Response(200, SubString(text, 1, 2))
+        SubString(text, 1, 2)
     end
 
     get(app, "/buffer") do ctx
         io = IOBuffer()
         write(io, "buffered")
-        HTTP.Response(200, take!(io))
+        take!(io)
+    end
+
+    get(app, "/raw-escape") do ctx
+        HTTP.Response(202, "raw")
     end
 
     get(app, "/admin/panel") do ctx
@@ -145,11 +149,20 @@ end
     etag_error_app = App()
     use(etag_error_app, etag())
     get(etag_error_app, "/bad") do ctx
-        HTTP.Response(200, 123)
+        123
     end
     etag_error_response = Inochi.dispatch(etag_error_app, HTTP.Request("GET", "/bad"))
     @test etag_error_response.status == 500
     @test String(etag_error_response.body) == "Internal Server Error"
+
+    raw_escape_response = Inochi.dispatch(app, HTTP.Request("GET", "/raw-escape"))
+    @test raw_escape_response.status == 202
+    @test String(raw_escape_response.body) == "raw"
+    @test HTTP.header(raw_escape_response, "Access-Control-Allow-Origin", nothing) === nothing
+    @test HTTP.header(raw_escape_response, "ETag", nothing) === nothing
+    @test HTTP.header(raw_escape_response, "Server", nothing) === nothing
+    @test HTTP.header(raw_escape_response, "Date", nothing) === nothing
+    @test HTTP.header(raw_escape_response, "Vary", nothing) === nothing
 
     response4 = Inochi.dispatch(app, HTTP.Request("OPTIONS", "/hello"))
     @test response4.status == 204

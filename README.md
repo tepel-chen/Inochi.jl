@@ -35,3 +35,12 @@ julia --project=docs docs/make.jl
 ## Example
 
 A sample todo application is available at `/example/todo`.
+
+## Benchmark
+
+Router-only benchmark scripts live in `benchmark/`.
+
+```bash
+julia --project=benchmark -e 'using Pkg; Pkg.instantiate()'
+julia --project=benchmark benchmark/inochi_router_benchmark.jl
+```
