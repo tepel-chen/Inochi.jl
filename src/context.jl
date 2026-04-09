@@ -497,3 +497,20 @@ function to_response(ctx::Context)::HTTP.Response
     end
     return apply_default_headers(response, ctx)
 end
+
+function to_response(result, ctx::Context)::HTTP.Response
+    if result isa Context
+        return to_response(result)
+    elseif result isa HTTP.Response
+        return result
+    elseif result isa AbstractString
+        html(ctx, result)
+        return to_response(ctx)
+    elseif result isa Vector{UInt8}
+        body!(ctx, result)
+        return to_response(ctx)
+    end
+
+    return throw(ArgumentError("Unsupported response body type: $(typeof(result))"))
+
+end

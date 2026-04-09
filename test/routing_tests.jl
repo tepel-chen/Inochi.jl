@@ -47,9 +47,9 @@ end
     response = Inochi.dispatch(app, HTTP.Request("GET", "/raw"))
     @test response.status == 201
     @test String(response.body) == "created"
-    @test HTTP.header(response, "Server") == EXPECTED_SERVER_HEADER
-    @test occursin(HTTP_DATE_PATTERN, HTTP.header(response, "Date"))
-    @test HTTP.header(response, "Vary") == "Origin"
+    @test HTTP.header(response, "Server", nothing) === nothing
+    @test HTTP.header(response, "Date", nothing) === nothing
+    @test HTTP.header(response, "Vary", nothing) === nothing
 end
 
 @testset "AST Router" begin

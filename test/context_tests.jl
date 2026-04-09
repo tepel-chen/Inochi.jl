@@ -21,6 +21,12 @@ using Dates
         redirect(ctx, "/next")
     end
 
+    get(app, "/ctx/raw") do ctx
+        header!(ctx, "X-Ignored", "yes")
+        setcookie(ctx, "session", "abc"; path = "/")
+        HTTP.Response(202, ["X-Direct" => "1"], "raw")
+    end
+
     response = Inochi.dispatch(app, HTTP.Request("GET", "/ctx/42"))
     @test response.status == 201
     @test String(response.body) == "id=42"
@@ -35,6 +41,16 @@ using Dates
     @test redirect_response.status == 303
     @test HTTP.header(redirect_response, "Location") == "/next"
     @test String(redirect_response.body) == ""
+
+    raw_response = Inochi.dispatch(app, HTTP.Request("GET", "/ctx/raw"))
+    @test raw_response.status == 202
+    @test String(raw_response.body) == "raw"
+    @test HTTP.header(raw_response, "X-Direct") == "1"
+    @test HTTP.header(raw_response, "X-Ignored", nothing) === nothing
+    @test isempty(HTTP.headers(raw_response, "Set-Cookie"))
+    @test HTTP.header(raw_response, "Server", nothing) === nothing
+    @test HTTP.header(raw_response, "Date", nothing) === nothing
+    @test HTTP.header(raw_response, "Vary", nothing) === nothing
 end
 
 @testset "Date Header Cache" begin

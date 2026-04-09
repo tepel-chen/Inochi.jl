@@ -955,21 +955,3 @@ function middleware_tail(path::String, prefix::String)::Union{Nothing,String}
 end
 
 const EMPTY_MIDDLEWARE_MATCHER = MiddlewareMatcher(MiddlewareRoute[], 0, empty_middleware_matcher)
-
-function to_response(result)::HTTP.Response
-    if result isa HTTP.Response
-        return apply_default_headers(result)
-    elseif result isa AbstractString
-        return apply_default_headers(HTTP.Response(200, String(result)))
-    elseif result isa Vector{UInt8}
-        return apply_default_headers(HTTP.Response(200, result))
-    end
-    throw(ArgumentError("Unsupported response body type: $(typeof(result))"))
-end
-
-function to_response(result, ctx::Context)::HTTP.Response
-    if result isa Context
-        return to_response(result)
-    end
-    return apply_default_headers(to_response(result), ctx)
-end

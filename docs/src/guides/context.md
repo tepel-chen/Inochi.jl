@@ -63,6 +63,10 @@ get(app, "/manual") do ctx
 end
 ```
 
+If you need a full escape hatch, a handler may return `HTTP.Response` directly.
+In that case Inochi does not apply the `ctx` response helpers or default
+headers, so the returned response is sent as-is.
+
 ## Rendering
 
 `render(ctx, filename, data)` renders a file from `app.views`. `render_text(ctx, template, data)` renders an inline template string.
