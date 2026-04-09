@@ -95,19 +95,23 @@ end
 
     fallback_views_root = joinpath(Inochi.executable_root(), "views")
     mkpath(fallback_views_root)
-    write(joinpath(fallback_views_root, "fallback.mustache"), "<p>{{name}}</p>")
+    fallback_template = joinpath(fallback_views_root, "fallback.mustache")
+    write(fallback_template, "<p>{{name}}</p>")
+    try
+        fallback_views_app = App()
+        fallback_views_app.renderer = (template, data) -> replace(template, "{{name}}" => string(data["name"]))
 
-    fallback_views_app = App()
-    fallback_views_app.renderer = (template, data) -> replace(template, "{{name}}" => string(data["name"]))
+        get(fallback_views_app, "/fallback") do ctx
+            render(ctx, "fallback.mustache", Dict("name" => "fallback"))
+        end
 
-    get(fallback_views_app, "/fallback") do ctx
-        render(ctx, "fallback.mustache", Dict("name" => "fallback"))
+        fallback_views_response = Inochi.dispatch(fallback_views_app, HTTP.Request("GET", "/fallback"))
+        @test fallback_views_response.status == 200
+        @test String(fallback_views_response.body) == "<p>fallback</p>"
+        @test Inochi.resolve_views_root(Context(App(), HTTP.Request("GET", "/"))) == joinpath(Inochi.executable_root(), "views")
+    finally
+        isfile(fallback_template) && rm(fallback_template; force = true)
     end
-
-    fallback_views_response = Inochi.dispatch(fallback_views_app, HTTP.Request("GET", "/fallback"))
-    @test fallback_views_response.status == 200
-    @test String(fallback_views_response.body) == "<p>fallback</p>"
-    @test Inochi.resolve_views_root(Context(App(), HTTP.Request("GET", "/"))) == joinpath(Inochi.executable_root(), "views")
 
     mktempdir() do tmpdir
         cd(tmpdir) do
