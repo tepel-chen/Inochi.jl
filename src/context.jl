@@ -6,19 +6,19 @@ Request-scoped context passed to handlers and middleware.
 mutable struct Context
     app::App
     req::HTTP.Request
-    params::Any
+    params::Union{RouteParams,Base.ImmutableDict{String,String},MiddlewareParams}
     status::Int
     headers::Dict{String,String}
-    body::Any
+    body::ResponseBody
     response::Union{Nothing,HTTP.Response}
     cookies_out::Vector{HTTP.Cookies.Cookie}
     state::Dict{Symbol,Any}
     varies_on_cookie::Bool
-    middleware_chain::Any
+    middleware_chain::Union{Nothing,Vector{MiddlewareMatch}}
     middleware_index::Int
     middleware_called::Bool
-    final_match::Any
-    backtrace::Any
+    final_match::Union{Nothing,StaticRoute,MatchedRoute}
+    backtrace::Union{Nothing,DispatchBacktrace}
 end
 
 function Context(app::App, req::HTTP.Request; params = RouteParams())
@@ -117,8 +117,13 @@ end
 
 Set the raw response body.
 """
-function body!(ctx::Context, value)::Context
-    ctx.body = value
+function body!(ctx::Context, value::AbstractString)::Context
+    ctx.body = String(value)
+    return ctx
+end
+
+function body!(ctx::Context, value::AbstractVector{UInt8})::Context
+    ctx.body = value isa Vector{UInt8} ? value : Vector{UInt8}(value)
     return ctx
 end
 
@@ -130,7 +135,7 @@ Store a raw `HTTP.Response` on the context and sync the visible status/body.
 function response!(ctx::Context, response::HTTP.Response)::Context
     setfield!(ctx, :response, response)
     setfield!(ctx, :status, Int(response.status))
-    setfield!(ctx, :body, response.body)
+    body!(ctx, response.body)
     return ctx
 end
 

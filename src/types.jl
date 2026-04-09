@@ -3,6 +3,8 @@ Route parameter storage used by matched handlers and middleware.
 """
 const RouteParams = Dict{String,String}
 const EMPTY_ROUTE_PARAMS = Base.ImmutableDict{String,String}()
+const ResponseBody = Union{String,Vector{UInt8}}
+const DispatchBacktrace = Vector{Union{Ptr{Nothing},Base.InterpreterIP}}
 const AppConfig = Dict{String,Union{String,Int}}
 const DEFAULT_MAX_CONTENT_SIZE = 4 * 1024 * 1024
 
@@ -29,18 +31,18 @@ struct DynamicRoute
     middleware_routes::Vector{MiddlewareRoute}
 end
 
+struct MiddlewareParams
+    tail::String
+end
+
 struct MiddlewareMatch
     handler::Function
     path::String
-    params::Any
+    params::MiddlewareParams
     order::Int
 end
 
 const EMPTY_MIDDLEWARE_MATCHES = MiddlewareMatch[]
-
-struct MiddlewareParams
-    tail::String
-end
 
 mutable struct RouteTrieNode
     static_children::Vector{Pair{String,RouteTrieNode}}
