@@ -63,9 +63,26 @@ get(app, "/manual") do ctx
 end
 ```
 
-If you need a full escape hatch, a handler may return `HTTP.Response` directly.
-In that case Inochi does not apply the `ctx` response helpers or default
-headers, so the returned response is sent as-is.
+For advanced cases, use `response!(ctx, ...)` to set a raw response on the
+context:
+
+```julia
+get(app, "/raw") do ctx
+    response!(ctx, HTTP.Response(202, "raw"))
+end
+```
+
+For a full escape hatch, return `HTTP.Response(...)` directly:
+
+```julia
+get(app, "/raw") do ctx
+    HTTP.Response(202, "raw")
+end
+```
+
+When a handler returns `HTTP.Response`, Inochi sends it as-is. The usual `ctx`
+helpers and default headers are skipped. `response!(ctx, ...)` is the same idea
+when you want to set a raw response from inside the handler body.
 
 ## Rendering
 

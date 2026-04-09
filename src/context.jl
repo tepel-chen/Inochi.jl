@@ -10,6 +10,7 @@ mutable struct Context
     status::Int
     headers::Dict{String,String}
     body::Any
+    response::Union{Nothing,HTTP.Response}
     cookies_out::Vector{HTTP.Cookies.Cookie}
     state::Dict{Symbol,Any}
     varies_on_cookie::Bool
@@ -28,6 +29,7 @@ function Context(app::App, req::HTTP.Request; params = RouteParams())
         200,
         Dict{String,String}(),
         "",
+        nothing,
         HTTP.Cookies.Cookie[],
         Dict{Symbol,Any}(),
         false,
@@ -117,6 +119,18 @@ Set the raw response body.
 """
 function body!(ctx::Context, value)::Context
     ctx.body = value
+    return ctx
+end
+
+"""
+    response!(ctx, response)
+
+Store a raw `HTTP.Response` on the context and sync the visible status/body.
+"""
+function response!(ctx::Context, response::HTTP.Response)::Context
+    setfield!(ctx, :response, response)
+    setfield!(ctx, :status, Int(response.status))
+    setfield!(ctx, :body, response.body)
     return ctx
 end
 
@@ -491,6 +505,7 @@ function apply_default_headers(response::HTTP.Response, ctx::Union{Nothing,Conte
 end
 
 function to_response(ctx::Context)::HTTP.Response
+    getfield(ctx, :response) !== nothing && return getfield(ctx, :response)
     response = HTTP.Response(ctx.status, collect(pairs(ctx.headers)), ctx.body)
     for cookie in ctx.cookies_out
         HTTP.Cookies.addcookie!(response, cookie)
@@ -498,19 +513,23 @@ function to_response(ctx::Context)::HTTP.Response
     return apply_default_headers(response, ctx)
 end
 
-function to_response(result, ctx::Context)::HTTP.Response
-    if result isa Context
-        return to_response(result)
-    elseif result isa HTTP.Response
-        return result
-    elseif result isa AbstractString
-        html(ctx, result)
-        return to_response(ctx)
-    elseif result isa Vector{UInt8}
-        body!(ctx, result)
-        return to_response(ctx)
-    end
-
-    return throw(ArgumentError("Unsupported response body type: $(typeof(result))"))
-
+apply_result!(ctx::Context, result::Context) = begin
+    result === ctx && return ctx
+    getfield(result, :response) !== nothing && response!(ctx, getfield(result, :response))
+    ctx.status = result.status
+    ctx.headers = result.headers
+    ctx.body = result.body
+    ctx.cookies_out = result.cookies_out
+    ctx.state = result.state
+    ctx.varies_on_cookie = result.varies_on_cookie
+    return ctx
 end
+
+apply_result!(ctx::Context, result::HTTP.Response) = begin
+    response!(ctx, result)
+    return ctx
+end
+
+apply_result!(ctx::Context, result::AbstractString) = html(ctx, result)
+apply_result!(ctx::Context, result::AbstractVector{UInt8}) = body!(ctx, result)
+apply_result!(ctx::Context, result) = throw(ArgumentError("Unsupported response body type: $(typeof(result))"))

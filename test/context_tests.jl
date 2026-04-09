@@ -47,6 +47,7 @@ using Dates
     @test String(raw_response.body) == "raw"
     @test HTTP.header(raw_response, "X-Direct") == "1"
     @test HTTP.header(raw_response, "X-Ignored", nothing) === nothing
+    @test HTTP.header(raw_response, "X-Middleware", nothing) === nothing
     @test isempty(HTTP.headers(raw_response, "Set-Cookie"))
     @test HTTP.header(raw_response, "Server", nothing) === nothing
     @test HTTP.header(raw_response, "Date", nothing) === nothing

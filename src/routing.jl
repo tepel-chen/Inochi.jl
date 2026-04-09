@@ -295,12 +295,12 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
             ctx.middleware_chain = EMPTY_MIDDLEWARE_MATCHES
             ctx.middleware_index = 1
             ctx.middleware_called = false
-            final_match === nothing && return handle_notfound(app, ctx)
-            ctx.params = matched_params(final_match)
-            return to_response(matched_handler(final_match)(ctx), ctx)
+            final_match === nothing && return to_response(handle_notfound(app, ctx))
+            apply_result!(ctx, matched_handler(final_match)(ctx))
+            return to_response(ctx)
         catch err
             ctx.backtrace = catch_backtrace()
-            return handle_error(app, ctx, err)
+            return to_response(handle_error(app, ctx, err))
         end
     end
 
@@ -309,14 +309,17 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
         ctx.middleware_index = 1
         ctx.middleware_called = false
         ctx.final_match = final_match
-        return continue_dispatch(ctx)
+        continue_dispatch(ctx)
+        return to_response(ctx)
     catch err
         ctx.backtrace = catch_backtrace()
-        return handle_error(app, ctx, err)
+        return to_response(handle_error(app, ctx, err))
     end
 end
 
-function request_path(target::AbstractString)::String
+request_path(target::AbstractString) = request_path(String(target))
+
+function request_path(target::String)::String
     isempty(target) && return "/"
 
     first = firstindex(target)
@@ -330,7 +333,7 @@ function request_path(target::AbstractString)::String
         end
     end
 
-    return target isa String ? target : String(target)
+    return target
 end
 
 function get_matcher(app::App, method::AbstractString)::MethodMatcher
@@ -800,7 +803,7 @@ end
     return nextind(path, first)
 end
 
-function continue_dispatch(ctx::Context)::HTTP.Response
+function continue_dispatch(ctx::Context)::Context
     middlewares = ctx.middleware_chain
     middlewares === nothing && throw(ArgumentError("dispatch state missing middleware chain"))
 
@@ -808,7 +811,8 @@ function continue_dispatch(ctx::Context)::HTTP.Response
     if index > length(middlewares)
         ctx.final_match === nothing && return handle_notfound(ctx.app, ctx)
         ctx.params = matched_params(ctx.final_match)
-        return to_response(matched_handler(ctx.final_match)(ctx), ctx)
+        apply_result!(ctx, matched_handler(ctx.final_match)(ctx))
+        return ctx
     end
 
     middleware = middlewares[index]
@@ -816,52 +820,62 @@ function continue_dispatch(ctx::Context)::HTTP.Response
     ctx.params = middleware.params
     ctx.middleware_called = false
     try
-        return to_response(middleware.handler(ctx), ctx)
+        apply_result!(ctx, middleware.handler(ctx))
+        return ctx
     finally
         ctx.params = original_params
     end
 end
 
-function handle_error(app::App, ctx::Context, err)::HTTP.Response
+function handle_error(app::App, ctx::Context, err)::Context
     if app.error_handler === nothing
-        return default_error_response()
+        status!(ctx, 500)
+        body!(ctx, "Internal Server Error")
+        return ctx
     end
 
     result = nothing
     try
         result = app.error_handler(ctx, err)
     catch
-        return default_error_response()
+        status!(ctx, 500)
+        body!(ctx, "Internal Server Error")
+        return ctx
     end
 
     if result === nothing
-        return default_error_response()
+        status!(ctx, 500)
+        body!(ctx, "Internal Server Error")
+        return ctx
     end
 
-    return to_response(result, ctx)
+    return apply_result!(ctx, result)
 end
 
-function handle_notfound(app::App, ctx::Context)::HTTP.Response
+function handle_notfound(app::App, ctx::Context)::Context
     if app.notfound_handler === nothing
-        return default_notfound_response()
+        status!(ctx, 404)
+        body!(ctx, "Not Found")
+        return ctx
     end
 
     result = nothing
     try
         result = app.notfound_handler(ctx)
     catch
-        return default_notfound_response()
+        status!(ctx, 404)
+        body!(ctx, "Not Found")
+        return ctx
     end
 
     if result === nothing
-        return default_notfound_response()
+        status!(ctx, 404)
+        body!(ctx, "Not Found")
+        return ctx
     end
 
-    return to_response(result, ctx)
+    return apply_result!(ctx, result)
 end
-
-default_error_response() = apply_default_headers(HTTP.Response(500, "Internal Server Error"))
-default_notfound_response() = apply_default_headers(HTTP.Response(404, "Not Found"))
 
 function collect_middlewares(routes::Vector{MiddlewareRoute}, path::String, final_match)
     isempty(routes) && return EMPTY_MIDDLEWARE_MATCHES

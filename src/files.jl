@@ -47,15 +47,10 @@ function etag_for_file(path::AbstractString)::String
     return "\"" * size_hex * "-" * mtime_hex * "\""
 end
 
-function response_bytes(body)::Union{Nothing,Vector{UInt8}}
-    if body isa Vector{UInt8}
-        return body
-    elseif body isa AbstractVector{UInt8}
-        return Vector{UInt8}(body)
-    else
-        throw(ArgumentError("Unsupported response body type: $(typeof(body))"))
-    end
-end
+response_bytes(body::Vector{UInt8}) = body
+response_bytes(body::AbstractVector{UInt8}) = Vector{UInt8}(body)
+response_bytes(body::AbstractString) = Vector{UInt8}(codeunits(String(body)))
+response_bytes(body) = throw(ArgumentError("Unsupported response body type: $(typeof(body))"))
 
 function if_none_match_matches(req::HTTP.Request, etag::AbstractString)::Bool
     header = strip(HTTP.header(req, IF_NONE_MATCH_HEADER_NAME, ""))
@@ -75,11 +70,6 @@ function maybe_not_modified(req::Union{Nothing,HTTP.Request}, etag::AbstractStri
         return HTTP.Response(304, [ETAG_HEADER_NAME => etag])
     end
     return nothing
-end
-
-function with_etag(response::HTTP.Response, etag::AbstractString)::HTTP.Response
-    HTTP.setheader(response, ETAG_HEADER_NAME => etag)
-    return response
 end
 
 function file_response(path::AbstractString; req::Union{Nothing,HTTP.Request} = nothing, root::AbstractString = executable_root())::HTTP.Response

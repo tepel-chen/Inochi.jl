@@ -6,22 +6,22 @@ returns `304 Not Modified` when `If-None-Match` matches.
 """
 function etag()
     return function (ctx::Context)
-        response = next(ctx)
-        existing = HTTP.header(response, ETAG_HEADER_NAME, "")
+        next(ctx)
+        getfield(ctx, :response) !== nothing && return ctx
+        existing = get(ctx.headers, ETAG_HEADER_NAME, "")
 
         if isempty(existing)
-            body_bytes = response_bytes(response.body)
-            body_bytes === nothing && return response
+            body_bytes = response_bytes(ctx.body)
+            body_bytes === nothing && return ctx
             existing = etag_for_bytes(body_bytes)
-            with_etag(response, existing)
+            header!(ctx, ETAG_HEADER_NAME, existing)
         end
 
         if if_none_match_matches(ctx.req, existing)
-            not_modified = HTTP.Response(304, Vector{Pair{String,String}}(), UInt8[])
-            with_etag(not_modified, existing)
-            return not_modified
+            status!(ctx, 304)
+            body!(ctx, UInt8[])
         end
 
-        return response
+        return ctx
     end
 end
