@@ -35,7 +35,7 @@ function on_notfound(handler::Function, app::App)::App
 end
 
 function register_route!(app::App, method::AbstractString, path::AbstractString, handler::Function; force_middleware::Bool = false)::App
-    normalized_method = uppercase(String(method))
+    normalized_method = uppercase(method)
     normalized_path = normalize_path(path)
     is_middleware = force_middleware
 
@@ -230,10 +230,9 @@ function trace(app::App, path::AbstractString, handler::Function)::App
 end
 
 function normalize_path(path::AbstractString)::String
-    value = String(path)
-    isempty(value) && return "/"
-    startswith(value, "/") || (value = "/" * value)
-    return value
+    isempty(path) && return "/"
+    startswith(path, "/") || (path = "/" * path)
+    return path
 end
 
 function mount_path(prefix::String, path::String)::String
@@ -267,9 +266,9 @@ function expand_optional_paths(path::AbstractString)::Vector{String}
         end
     end
 
-    prefix = [String(part) for part in parts[1:optional_suffix_start-1]]
-    optional_parts = [String(part) for part in parts[optional_suffix_start:end]]
-    expanded = String[]
+    prefix = [part for part in parts[1:optional_suffix_start-1]]
+    optional_parts = [part for part in parts[optional_suffix_start:end]]
+    expanded = AbstractString[]
 
     for include_count in 0:length(optional_parts)
         combined = copy(prefix)
@@ -282,7 +281,7 @@ function expand_optional_paths(path::AbstractString)::Vector{String}
     return expanded
 end
 
-function dispatch(app::App, req::HTTP.Request)::HTTP.Response
+function dispatch(app::App, req::Request)::Response
     path = request_path(req.target)
     matcher = get_matcher(app, req.method)
     final_match = match_final_route(matcher, path)
@@ -291,10 +290,6 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
     middleware_stack = collect_middlewares(app, req.method, path, final_match)
     if isempty(middleware_stack)
         try
-            ctx.final_match = final_match
-            ctx.middleware_chain = EMPTY_MIDDLEWARE_MATCHES
-            ctx.middleware_index = 1
-            ctx.middleware_called = false
             final_match === nothing && return to_response(handle_notfound(app, ctx))
             apply_result!(ctx, matched_handler(final_match)(ctx))
             return to_response(ctx)
@@ -317,19 +312,17 @@ function dispatch(app::App, req::HTTP.Request)::HTTP.Response
     end
 end
 
-request_path(target::AbstractString) = request_path(String(target))
-
-function request_path(target::String)::String
+function request_path(target::AbstractString)::AbstractString
     isempty(target) && return "/"
 
     first = firstindex(target)
-    target[first] == '/' || return normalize_path(String(HTTP.URIs.URI(target).path))
+    target[first] == '/' || return normalize_path(HTTP.URIs.URI(target).path)
 
     for index in eachindex(target)
         char = target[index]
         if char == '?' || char == '#'
             index == first && return "/"
-            return String(SubString(target, first, prevind(target, index)))
+            return SubString(target, first, prevind(target, index))
         end
     end
 
@@ -338,21 +331,21 @@ end
 
 function get_matcher(app::App, method::AbstractString)::MethodMatcher
     app.dirty && compile_routes!(app)
-    return get(app.matchers, uppercase(String(method)), EMPTY_METHOD_MATCHER)
+    return get(app.matchers, uppercase(method), EMPTY_METHOD_MATCHER)
 end
 
 function get_middleware_matcher(app::App, method::AbstractString)::MiddlewareMatcher
     app.dirty && compile_routes!(app)
-    return get(app.middleware_matchers, uppercase(String(method)), EMPTY_MIDDLEWARE_MATCHER)
+    return get(app.middleware_matchers, uppercase(method), EMPTY_MIDDLEWARE_MATCHER)
 end
 
-@noinline function empty_dynamic_matcher(path::String)
+@noinline function empty_dynamic_matcher(path::AbstractString)
     return nothing
 end
 
 const EMPTY_METHOD_MATCHER = MethodMatcher(empty_dynamic_matcher, Dict{String,StaticRoute}())
 
-function match_final_route(matcher::MethodMatcher, path::String)
+function match_final_route(matcher::MethodMatcher, path::AbstractString)
     static_route = get(matcher.static_map, path, nothing)
     if static_route !== nothing
         return static_route
@@ -438,7 +431,7 @@ function build_method_matcher(routes::Vector{RouteDefinition}, middleware_routes
     return MethodMatcher(dynamic_matcher, static_map)
 end
 
-function route_middleware_candidates(path::String, middleware_routes::Vector{MiddlewareRoute})::Vector{MiddlewareRoute}
+function route_middleware_candidates(path::AbstractString, middleware_routes::Vector{MiddlewareRoute})::Vector{MiddlewareRoute}
     isempty(middleware_routes) && return EMPTY_MIDDLEWARE_ROUTES
     route_prefix = route_static_prefix(path)
     candidates = MiddlewareRoute[]
@@ -453,14 +446,14 @@ function route_middleware_candidates(path::String, middleware_routes::Vector{Mid
     return isempty(candidates) ? EMPTY_MIDDLEWARE_ROUTES : candidates
 end
 
-function route_static_prefix(path::String)::String
+function route_static_prefix(path::AbstractString)::String
     path == "/" && return "/"
     parts = split(path, '/', keepempty = false)
     prefix_parts = String[]
     for part in parts
         startswith(part, ":") && break
         part == "*" && break
-        push!(prefix_parts, String(part))
+        push!(prefix_parts, part)
     end
     return isempty(prefix_parts) ? "/" : "/" * join(prefix_parts, "/")
 end
@@ -471,7 +464,7 @@ function route_prefix_may_match(route_prefix::String, middleware_prefix::String)
     return false
 end
 
-function path_prefix_matches(path::String, prefix::String)::Bool
+function path_prefix_matches(path::AbstractString, prefix::AbstractString)::Bool
     prefix == "/" && return true
     path == "/" && return false
 
@@ -508,7 +501,7 @@ function build_middleware_matcher(routes::Vector{MiddlewareRoute})::MiddlewareMa
     else
         trie = build_middleware_trie(scoped_routes)
         finalize_middleware_trie!(trie, MiddlewareRoute[])
-        fn_expr = :((path::String, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int) -> begin
+        fn_expr = :((path::AbstractString, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int) -> begin
             last = lastindex(path)
             index = route_start_index(path)
             $(middleware_trie_expression(trie))
@@ -520,7 +513,7 @@ function build_middleware_matcher(routes::Vector{MiddlewareRoute})::MiddlewareMa
     return MiddlewareMatcher(global_routes, length(routes), middleware_matcher)
 end
 
-function parse_route_pattern(path::String)
+function parse_route_pattern(path::AbstractString)
     parts = split(path, '/', keepempty = false)
     if isempty(parts)
         return (static = true, segments = String[], param_names = String[])
@@ -531,7 +524,7 @@ function parse_route_pattern(path::String)
     is_static = true
 
     for part in parts
-        push!(segments, String(part))
+        push!(segments, part)
         if startswith(part, ":")
             is_static = false
             push!(param_names, part[2:end])
@@ -550,7 +543,7 @@ function compile_dynamic_matcher(routes::Vector{DynamicRoute})::Function
     end
 
     trie = build_route_trie(routes)
-    fn_expr = :((path::String) -> begin
+    fn_expr = :((path::AbstractString) -> begin
         last = lastindex(path)
         index = route_start_index(path)
         $(trie_match_expression(trie))
@@ -619,13 +612,13 @@ function insert_middleware_route!(root::MiddlewareTrieNode, route::MiddlewareRou
     node = root
     if route.prefix != "/"
         for segment in split(route.prefix, '/', keepempty = false)
-            node = get_or_create_middleware_child!(node, String(segment))
+            node = get_or_create_middleware_child!(node, segment)
         end
     end
     push!(node.terminal_routes, route)
 end
 
-function get_or_create_middleware_child!(node::MiddlewareTrieNode, segment::String)::MiddlewareTrieNode
+function get_or_create_middleware_child!(node::MiddlewareTrieNode, segment::AbstractString)::MiddlewareTrieNode
     for child in node.static_children
         child.first == segment && return child.second
     end
@@ -730,11 +723,10 @@ function wildcard_routes_expression(node::RouteTrieNode, capture_syms::Vector{Sy
 end
 
 function route_return_expression(route::DynamicRoute, capture_syms::Vector{Symbol})
-    params_exprs = [:(params[$(name)] = String($sym)) for (name, sym) in zip(route.param_names, capture_syms)]
+    names_expr = Expr(:tuple, (QuoteNode(name) for name in route.param_names)...)
+    values_expr = Expr(:tuple, capture_syms...)
     return quote
-        params = RouteParams()
-        sizehint!(params, $(length(route.param_names)))
-        $(Expr(:block, params_exprs...))
+        params = RouteParamsView($names_expr, $values_expr)
         return MatchedRoute($(route.handler), $(route.path), params, $(route.middleware_routes))
     end
 end
@@ -746,16 +738,15 @@ function route_wildcard_expression(
     index_sym::Symbol,
     last_sym::Symbol,
 )
-    params_exprs = [:(params[$(name)] = String($sym)) for (name, sym) in zip(route.param_names, capture_syms)]
+    names_expr = Expr(:tuple, (QuoteNode(name) for name in route.param_names)...)
+    values_expr = Expr(:tuple, capture_syms...)
     return quote
         $wildcard_capture = if $index_sym > $last_sym
-            ""
+            SubString(path, 1, 0)
         else
             SubString(path, $index_sym, $last_sym)
         end
-        params = RouteParams()
-        sizehint!(params, $(length(route.param_names)))
-        $(Expr(:block, params_exprs...))
+        params = RouteParamsView($names_expr, $values_expr)
         return MatchedRoute($(route.handler), $(route.path), params, $(route.middleware_routes))
     end
 end
@@ -787,7 +778,7 @@ function middleware_trie_expression(node::MiddlewareTrieNode)
     end
 end
 
-@inline function segment_bounds(path::String, index::Int)
+@inline function segment_bounds(path::AbstractString, index::Int)
     last = lastindex(path)
     index > last && return nothing
     path[index] == '/' && return nothing
@@ -798,7 +789,7 @@ end
     return (index, stop, next_index, slash !== nothing)
 end
 
-@inline function route_start_index(path::String)
+@inline function route_start_index(path::AbstractString)
     first = firstindex(path)
     return nextind(path, first)
 end
@@ -809,9 +800,10 @@ function continue_dispatch(ctx::Context)::Context
 
     index = ctx.middleware_index
     if index > length(middlewares)
-        ctx.final_match === nothing && return handle_notfound(ctx.app, ctx)
-        ctx.params = matched_params(ctx.final_match)
-        apply_result!(ctx, matched_handler(ctx.final_match)(ctx))
+        final_match = ctx.final_match
+        final_match === nothing && return handle_notfound(ctx.app, ctx)
+        ctx.params = matched_params(final_match)
+        apply_result!(ctx, matched_handler(final_match)(ctx))
         return ctx
     end
 
@@ -829,8 +821,13 @@ end
 
 function handle_error(app::App, ctx::Context, err)::Context
     if app.error_handler === nothing
-        status!(ctx, 500)
-        body!(ctx, "Internal Server Error")
+        if err isa PayloadTooLargeError
+            status!(ctx, 413)
+            body!(ctx, "Payload Too Large")
+        else
+            status!(ctx, 500)
+            body!(ctx, "Internal Server Error")
+        end
         return ctx
     end
 
@@ -844,8 +841,13 @@ function handle_error(app::App, ctx::Context, err)::Context
     end
 
     if result === nothing
-        status!(ctx, 500)
-        body!(ctx, "Internal Server Error")
+        if err isa PayloadTooLargeError
+            status!(ctx, 413)
+            body!(ctx, "Payload Too Large")
+        else
+            status!(ctx, 500)
+            body!(ctx, "Internal Server Error")
+        end
         return ctx
     end
 
@@ -877,7 +879,7 @@ function handle_notfound(app::App, ctx::Context)::Context
     return apply_result!(ctx, result)
 end
 
-function collect_middlewares(routes::Vector{MiddlewareRoute}, path::String, final_match)
+function collect_middlewares(routes::Vector{MiddlewareRoute}, path::AbstractString, final_match)
     isempty(routes) && return EMPTY_MIDDLEWARE_MATCHES
     final_path = final_match === nothing ? nothing : matched_path(final_match)
     middlewares = Vector{MiddlewareMatch}(undef, length(routes))
@@ -887,7 +889,7 @@ function collect_middlewares(routes::Vector{MiddlewareRoute}, path::String, fina
     return middlewares
 end
 
-function collect_middlewares(app::App, method::AbstractString, path::String, final_match)
+function collect_middlewares(app::App, method::AbstractString, path::AbstractString, final_match)
     if final_match === nothing
         matcher = get_middleware_matcher(app, method)
         final_path = nothing
@@ -896,7 +898,7 @@ function collect_middlewares(app::App, method::AbstractString, path::String, fin
     return collect_middlewares(matched_middleware_routes(final_match), path, final_match)
 end
 
-function collect_middlewares(matcher::MiddlewareMatcher, path::String, final_path::Union{Nothing,String})
+function collect_middlewares(matcher::MiddlewareMatcher, path::AbstractString, final_path::Union{Nothing,String})
     matcher.route_count == 0 && return EMPTY_MIDDLEWARE_MATCHES
 
     middlewares = Vector{MiddlewareMatch}(undef, matcher.route_count)
@@ -909,7 +911,7 @@ function collect_middlewares(matcher::MiddlewareMatcher, path::String, final_pat
     return middlewares
 end
 
-function normalize_middleware_prefix(path::String)::String
+function normalize_middleware_prefix(path::AbstractString)::String
     if path == "/" || path == "/*"
         return "/"
     elseif endswith(path, "/*")
@@ -922,12 +924,12 @@ function normalize_middleware_prefix(path::String)::String
     end
 end
 
-function empty_middleware_matcher(path::String, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int)
+function empty_middleware_matcher(path::AbstractString, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int)
     return write_index
 end
 
-function middleware_emit_matches(routes::Vector{MiddlewareRoute}, path::String, index::Int, last::Int, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int)
-    tail = index > last ? "" : String(SubString(path, index, last))
+function middleware_emit_matches(routes::Vector{MiddlewareRoute}, path::AbstractString, index::Int, last::Int, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int)
+    tail = index > last ? SubString(path, 1, 0) : SubString(path, index, last)
     for route in routes
         final_path !== nothing && route.path == final_path && continue
         matches[write_index] = MiddlewareMatch(route.handler, route.path, MiddlewareParams(tail), route.order)
@@ -936,7 +938,7 @@ function middleware_emit_matches(routes::Vector{MiddlewareRoute}, path::String, 
     return write_index
 end
 
-function middleware_emit_candidate_matches(routes::Vector{MiddlewareRoute}, path::String, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int)
+function middleware_emit_candidate_matches(routes::Vector{MiddlewareRoute}, path::AbstractString, final_path::Union{Nothing,String}, matches::Vector{MiddlewareMatch}, write_index::Int)
     for route in routes
         final_path !== nothing && route.path == final_path && continue
         tail = middleware_tail(path, route.prefix)
@@ -947,25 +949,25 @@ function middleware_emit_candidate_matches(routes::Vector{MiddlewareRoute}, path
     return write_index
 end
 
-function middleware_tail(path::String, prefix::String)::Union{Nothing,String}
+function middleware_tail(path::AbstractString, prefix::AbstractString)::Union{Nothing,SubString{String}}
     if prefix == "/"
         start = route_start_index(path)
-        return start > lastindex(path) ? "" : String(SubString(path, start, lastindex(path)))
+        return start > lastindex(path) ? SubString(path, 1, 0) : SubString(path, start, lastindex(path))
     end
 
     startswith(path, prefix) || return nothing
 
     prefix_last = lastindex(prefix)
     path_last = lastindex(path)
-    prefix_last == path_last && return ""
+    prefix_last == path_last && return SubString(path, 1, 0)
 
     next_index = nextind(path, prefix_last)
-    next_index > path_last && return ""
+    next_index > path_last && return SubString(path, 1, 0)
     path[next_index] == '/' || return nothing
 
     tail_start = nextind(path, next_index)
-    tail_start > path_last && return ""
-    return String(SubString(path, tail_start, path_last))
+    tail_start > path_last && return SubString(path, 1, 0)
+    return SubString(path, tail_start, path_last)
 end
 
 const EMPTY_MIDDLEWARE_MATCHER = MiddlewareMatcher(MiddlewareRoute[], 0, empty_middleware_matcher)

@@ -11,6 +11,16 @@ App
 Context
 RouteParams
 start
+Request
+Response
+Headers
+PayloadTooLargeError
+bodybytes
+bodylength
+bodytext
+getheaders
+appendheader!
+serve
 ```
 
 ## Routing

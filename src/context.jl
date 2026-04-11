@@ -5,14 +5,18 @@ Request-scoped context passed to handlers and middleware.
 """
 mutable struct Context
     app::App
-    req::HTTP.Request
-    params::Union{RouteParams,Base.ImmutableDict{String,String},MiddlewareParams}
+    req::Request
+    params::Union{RouteParams,Base.ImmutableDict{String,String},RouteParamsView,MiddlewareParams}
     status::Int
-    headers::Dict{String,String}
+    headers::Union{Nothing,Headers}
     body::ResponseBody
-    response::Union{Nothing,HTTP.Response}
-    cookies_out::Vector{HTTP.Cookies.Cookie}
-    state::Dict{Symbol,Any}
+    response::Union{Nothing,Response}
+    cookies_out::Union{Nothing,Vector{HTTP.Cookies.Cookie}}
+    state::Union{Nothing,Dict{Symbol,Any}}
+    content_type::Union{Nothing,String}
+    query_params::Union{Nothing,Dict{String,String}}
+    form_params::Union{Nothing,Dict{String,String}}
+    multipart_parts::Union{Nothing,Vector{HTTP.Multipart}}
     varies_on_cookie::Bool
     middleware_chain::Union{Nothing,Vector{MiddlewareMatch}}
     middleware_index::Int
@@ -21,17 +25,21 @@ mutable struct Context
     backtrace::Union{Nothing,DispatchBacktrace}
 end
 
-function Context(app::App, req::HTTP.Request; params = RouteParams())
+function Context(app::App, req::Request; params = EMPTY_ROUTE_PARAMS)
     return Context(
         app,
         req,
         params,
         200,
-        Dict{String,String}(),
+        nothing,
         "",
         nothing,
-        HTTP.Cookies.Cookie[],
-        Dict{Symbol,Any}(),
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
+        nothing,
         false,
         nothing,
         1,
@@ -46,15 +54,27 @@ struct CookieAccessor
 end
 
 function Base.getindex(accessor::CookieAccessor, key::AbstractString)
-    value = accessor(String(key))
+    value = accessor(key)
     value === nothing && throw(KeyError(key))
     return value
 end
 
 function (accessor::CookieAccessor)(key::AbstractString, default = nothing)
     accessor.ctx.varies_on_cookie = true
-    for cookie in HTTP.Cookies.cookies(accessor.ctx.req)
-        cookie.name == key && return cookie.value
+    header = get(accessor.ctx.req.headers, "Cookie", "")
+    isempty(header) && return default
+    for item in eachsplit(header, ';'; keepempty = false)
+        item = strip(item)
+        isempty(item) && continue
+        eq = findfirst(==( '='), item)
+        eq === nothing && continue
+        name = strip(SubString(item, firstindex(item), prevind(item, eq)))
+        value = strip(SubString(item, nextind(item, eq), lastindex(item)))
+        isempty(name) && continue
+        HTTP.Cookies.iscookienamevalid(name) || continue
+        value, ok = HTTP.Cookies.parsecookievalue(value, true)
+        ok || continue
+        name == key && return value
     end
     return default
 end
@@ -69,6 +89,10 @@ function Base.getproperty(ctx::Context, name::Symbol)
         :body,
         :cookies_out,
         :state,
+        :content_type,
+        :query_params,
+        :form_params,
+        :multipart_parts,
         :varies_on_cookie,
         :middleware_chain,
         :middleware_index,
@@ -81,16 +105,38 @@ function Base.getproperty(ctx::Context, name::Symbol)
     return getproperty(getfield(ctx, :req), name)
 end
 
-Base.getindex(ctx::Context, key::AbstractString) = ctx.params[String(key)]
+Base.getindex(ctx::Context, key::AbstractString) = ctx.params[key]
 """
     Base.get(ctx, key::AbstractString, default = nothing)
 
 Read a route parameter from `ctx.params`.
 """
-Base.get(ctx::Context, key::AbstractString, default = nothing) = get(ctx.params, String(key), default)
+Base.get(ctx::Context, key::AbstractString, default = nothing) = get(ctx.params, key, default)
 
 Base.getindex(params::MiddlewareParams, key::AbstractString) = key == "*" ? params.tail : throw(KeyError(key))
 Base.get(params::MiddlewareParams, key::AbstractString, default = nothing) = key == "*" ? params.tail : default
+Base.haskey(params::MiddlewareParams, key::AbstractString) = key == "*"
+
+function Base.getindex(params::RouteParamsView, key::AbstractString)
+    @inbounds for index in eachindex(params.names, params.values)
+        params.names[index] == key && return params.values[index]
+    end
+    throw(KeyError(key))
+end
+
+function Base.get(params::RouteParamsView, key::AbstractString, default = nothing)
+    @inbounds for index in eachindex(params.names, params.values)
+        params.names[index] == key && return params.values[index]
+    end
+    return default
+end
+
+function Base.haskey(params::RouteParamsView, key::AbstractString)
+    @inbounds for index in eachindex(params.names)
+        params.names[index] == key && return true
+    end
+    return false
+end
 
 """
     status!(ctx, code)
@@ -107,8 +153,9 @@ end
 
 Set a response header.
 """
-function header!(ctx::Context, key::AbstractString, value)::Context
-    ctx.headers[String(key)] = string(value)
+function header!(ctx::Context, key::AbstractString, value::AbstractString)::Context
+    ctx.headers === nothing && (ctx.headers = Headers())
+    ctx.headers[key] = value
     return ctx
 end
 
@@ -118,7 +165,7 @@ end
 Set the raw response body.
 """
 function body!(ctx::Context, value::AbstractString)::Context
-    ctx.body = String(value)
+    ctx.body = value
     return ctx
 end
 
@@ -130,10 +177,10 @@ end
 """
     response!(ctx, response)
 
-Store a raw `HTTP.Response` on the context and sync the visible status/body.
+Store a raw `Response` on the context and sync the visible status/body.
 """
-function response!(ctx::Context, response::HTTP.Response)::Context
-    ctx.response = response
+function response!(ctx::Context, response::Response)::Context
+    setfield!(ctx, :response, response)
     status!(ctx, response.status)
     body!(ctx, response.body)
     return ctx
@@ -144,13 +191,14 @@ end
 
 Append a `Set-Cookie` header to the response.
 """
-function setcookie(ctx::Context, name::AbstractString, value; kwargs...)::Context
+function setcookie(ctx::Context, name::AbstractString, value::AbstractString; kwargs...)::Context
     cookie_kwargs = Pair{Symbol,Any}[]
     for (key, val) in pairs(NamedTuple(kwargs))
         key === :samesite && val === nothing && continue
         push!(cookie_kwargs, key => val)
     end
-    cookie = HTTP.Cookies.Cookie(String(name), string(value); cookie_kwargs...)
+    cookie = HTTP.Cookies.Cookie(name, value; cookie_kwargs...)
+    ctx.cookies_out === nothing && (ctx.cookies_out = HTTP.Cookies.Cookie[])
     push!(ctx.cookies_out, cookie)
     return ctx
 end
@@ -164,14 +212,14 @@ Return a request cookie accessor, or read a request cookie directly.
 cookie(ctx::Context) = CookieAccessor(ctx)
 cookie(ctx::Context, key::AbstractString, default = nothing) = cookie(ctx)(key, default)
 
-function app_config_string(app::App, key::AbstractString)::Union{Nothing,String}
-    value = get(app.config, String(key), nothing)
-    return value isa String ? value : nothing
+function app_config_string(app::App, key::AbstractString)::Union{Nothing,AbstractString}
+    value = get(app.config, key, nothing)
+    return value isa AbstractString ? value : nothing
 end
 
 function app_config_int(app::App, key::AbstractString, default::Integer)::Int
-    value = get(app.config, String(key), Int(default))
-    value isa Int || throw(ArgumentError("app.config[$(repr(String(key)))] must be an Int"))
+    value = get(app.config, key, Int(default))
+    value isa Int || throw(ArgumentError("app.config[$(repr(key))] must be an Int"))
     return value
 end
 
@@ -194,7 +242,7 @@ end
 Read and verify a signed cookie formatted as `<BASE64>.<HMAC>`.
 """
 function secure_cookie(ctx::Context, name::AbstractString; secret = nothing, default = nothing)
-    raw_value = cookie(ctx, String(name), nothing)
+    raw_value = cookie(ctx, name, nothing)
     raw_value === nothing && return default
 
     parts = split(raw_value, '.'; limit = 2)
@@ -212,14 +260,14 @@ end
 Set a signed cookie formatted as `<BASE64>.<HMAC>`.
 """
 function set_secure_cookie(ctx::Context, name::AbstractString, value; secret = nothing, kwargs...)::Context
-    payload = base64encode(String(value))
+    payload = base64encode(value)
     signature = secure_cookie_signature(resolve_cookie_secret(ctx, secret), payload)
     return setcookie(ctx, name, payload * "." * signature; kwargs...)
 end
 
-function resolve_cookie_secret(ctx::Context, secret)::String
+function resolve_cookie_secret(ctx::Context, secret)::AbstractString
     if secret !== nothing
-        return String(secret)
+        return secret
     elseif (configured = app_config_string(ctx.app, "secret")) !== nothing
         return configured
     else
@@ -228,9 +276,13 @@ function resolve_cookie_secret(ctx::Context, secret)::String
 end
 
 function request_content_type(ctx::Context)::String
-    raw = strip(HTTP.header(ctx.req, "Content-Type", ""))
+    cached = getfield(ctx, :content_type)
+    cached !== nothing && return cached
+    raw = strip(get(ctx.req.headers, "Content-Type", ""))
     isempty(raw) && return ""
-    return lowercase(strip(first(split(raw, ';'; limit = 2))))
+    value = lowercase(strip(first(split(raw, ';'; limit = 2))))
+    setfield!(ctx, :content_type, value)
+    return value
 end
 
 function require_content_type(ctx::Context, expected::AbstractString, description::AbstractString)::Nothing
@@ -239,15 +291,16 @@ function require_content_type(ctx::Context, expected::AbstractString, descriptio
     throw(ArgumentError("Expected Content-Type $(expected) for $(description), got " * (isempty(actual) ? "<missing>" : actual)))
 end
 
-function request_body_text(ctx::Context)::String
-    return String(request_body_bytes(ctx))
+function request_body_text(ctx::Context)::AbstractString
+    max_content_size = app_config_int(ctx.app, "max_content_size", DEFAULT_MAX_CONTENT_SIZE)
+    bodylength(ctx.req) <= max_content_size || throw(PayloadTooLargeError())
+    return bodytext(ctx.req)
 end
 
 function request_body_bytes(ctx::Context)::Vector{UInt8}
     max_content_size = app_config_int(ctx.app, "max_content_size", DEFAULT_MAX_CONTENT_SIZE)
-    body_bytes = Vector{UInt8}(ctx.req.body)
-    length(body_bytes) <= max_content_size || throw(ArgumentError("Request body exceeds max_content_size"))
-    return body_bytes
+    bodylength(ctx.req) <= max_content_size || throw(PayloadTooLargeError())
+    return bodybytes(ctx.req)
 end
 
 """
@@ -255,7 +308,7 @@ end
 
 Read the request body as text. Requires a `text/*` content type.
 """
-function reqtext(ctx::Context)::String
+function reqtext(ctx::Context)::AbstractString
     actual = request_content_type(ctx)
     startswith(actual, "text/") || throw(ArgumentError("Expected Content-Type text/* for reqtext, got " * (isempty(actual) ? "<missing>" : actual)))
     return request_body_text(ctx)
@@ -280,9 +333,14 @@ Parse the request body as multipart form data and return the parsed parts.
 """
 function reqmultipart(ctx::Context)::Vector{HTTP.Multipart}
     require_content_type(ctx, "multipart/form-data", "reqmultipart")
+    cached = getfield(ctx, :multipart_parts)
+    cached !== nothing && return cached
     request_body_bytes(ctx)
-    parts = HTTP.parse_multipart_form(ctx.req)
+    http_headers = [SubString(name) => SubString(value) for (name, value) in ctx.req.headers]
+    http_req = HTTP.Request(ctx.req.method, ctx.req.target, http_headers, bodybytes(ctx.req); version = HTTP.HTTPVersion(1, 1))
+    parts = HTTP.parse_multipart_form(http_req)
     parts === nothing && throw(ArgumentError("Failed to parse multipart/form-data request"))
+    setfield!(ctx, :multipart_parts, parts)
     return parts
 end
 
@@ -293,7 +351,7 @@ Return the first uploaded multipart file part, optionally matching a field name.
 """
 function reqfile(ctx::Context; name::Union{Nothing,AbstractString} = nothing)
     parts = reqmultipart(ctx)
-    target_name = name === nothing ? nothing : String(name)
+    target_name = name === nothing ? nothing : name
     for part in parts
         part.filename === nothing && continue
         if target_name === nothing || part.name == target_name
@@ -310,7 +368,11 @@ Parse the request body as `application/x-www-form-urlencoded`.
 """
 function reqform(ctx::Context)::Dict{String,String}
     require_content_type(ctx, "application/x-www-form-urlencoded", "reqform")
-    return Dict{String,String}(HTTP.URIs.queryparams(request_body_text(ctx)))
+    cached = getfield(ctx, :form_params)
+    cached !== nothing && return cached
+    value = Dict{String,String}(HTTP.URIs.queryparams(request_body_text(ctx)))
+    setfield!(ctx, :form_params, value)
+    return value
 end
 
 """
@@ -319,8 +381,12 @@ end
 Return parsed query parameters from the request URL.
 """
 function reqquery(ctx::Context)::Dict{String,String}
+    cached = getfield(ctx, :query_params)
+    cached !== nothing && return cached
     uri = HTTP.URIs.URI(ctx.req.target)
-    return Dict{String,String}(HTTP.URIs.queryparams(uri))
+    value = Dict{String,String}(HTTP.URIs.queryparams(uri))
+    setfield!(ctx, :query_params, value)
+    return value
 end
 
 function resolve_renderer(ctx::Context)::Function
@@ -348,8 +414,8 @@ end
 Render an inline template with the application's configured renderer and return HTML.
 """
 function render_text(ctx::Context, template::AbstractString, data = Dict{String,Any}())::Context
-    rendered = resolve_renderer(ctx)(String(template), data)
-    return html(ctx, String(rendered))
+    rendered = resolve_renderer(ctx)(template, data)
+    return html(ctx, rendered)
 end
 
 """
@@ -362,7 +428,7 @@ function render(ctx::Context, filename::AbstractString, data = Dict{String,Any}(
     template_path === nothing && throw(ArgumentError("Template path escapes app.views"))
     isfile(template_path) || throw(ArgumentError("Template not found: " * String(filename)))
     rendered = resolve_file_renderer(ctx)(template_path, data)
-    return html(ctx, String(rendered))
+    return html(ctx, rendered)
 end
 
 """
@@ -387,7 +453,7 @@ Write a plain-text response.
 function text(ctx::Context, value::AbstractString; status::Integer = ctx.status)::Context
     status!(ctx, status)
     header!(ctx, "Content-Type", "text/plain; charset=utf-8")
-    body!(ctx, String(value))
+    body!(ctx, value)
     return ctx
 end
 
@@ -399,7 +465,7 @@ Write an HTML response.
 function html(ctx::Context, value::AbstractString; status::Integer = ctx.status)::Context
     status!(ctx, status)
     header!(ctx, "Content-Type", "text/html; charset=utf-8")
-    body!(ctx, String(value))
+    body!(ctx, value)
     return ctx
 end
 
@@ -422,7 +488,7 @@ Write a redirect response with a `Location` header.
 """
 function redirect(ctx::Context, location::AbstractString; status::Integer = 303)::Context
     status!(ctx, status)
-    header!(ctx, "Location", String(location))
+    header!(ctx, "Location", location)
     body!(ctx, "")
     return ctx
 end
@@ -433,6 +499,7 @@ end
 Store arbitrary request-local state on the context.
 """
 function set!(ctx::Context, key::Symbol, value)
+    ctx.state === nothing && (ctx.state = Dict{Symbol,Any}())
     ctx.state[key] = value
     return value
 end
@@ -443,6 +510,7 @@ end
 Read request-local state previously stored with `set!`.
 """
 function Base.get(ctx::Context, key::Symbol, default = nothing)
+    ctx.state === nothing && return default
     return get(ctx.state, key, default)
 end
 
@@ -482,7 +550,7 @@ function merge_vary(existing::AbstractString, value::AbstractString)::String
         push!(seen, lowercase(normalized))
     end
 
-    normalized_value = strip(String(value))
+    normalized_value = strip(value)
     if !isempty(normalized_value) && !(lowercase(normalized_value) in seen)
         push!(entries, normalized_value)
     end
@@ -490,10 +558,10 @@ function merge_vary(existing::AbstractString, value::AbstractString)::String
     return join(entries, ", ")
 end
 
-function apply_default_headers(response::HTTP.Response, ctx::Union{Nothing,Context} = nothing)::HTTP.Response
-    HTTP.setheader(response, SERVER_HEADER_NAME => SERVER_HEADER_VALUE)
-    HTTP.setheader(response, DATE_HEADER_NAME => http_date())
-    existing_vary = HTTP.header(response, VARY_HEADER_NAME, "")
+function apply_default_headers(ctx::Union{Nothing,Context} = nothing)::Context
+    header!(ctx, SERVER_HEADER_NAME, SERVER_HEADER_VALUE)
+    header!(ctx, DATE_HEADER_NAME, http_date())
+    existing_vary = get(ctx.headers, VARY_HEADER_NAME, "")
     if isempty(existing_vary)
         vary = DEFAULT_VARY_VALUE
         if ctx !== nothing && ctx.varies_on_cookie
@@ -505,17 +573,20 @@ function apply_default_headers(response::HTTP.Response, ctx::Union{Nothing,Conte
             vary = merge_vary(vary, "Cookie")
         end
     end
-    HTTP.setheader(response, VARY_HEADER_NAME => vary)
-    return response
+    header!(ctx, VARY_HEADER_NAME, vary)
+    return ctx
 end
 
-function to_response(ctx::Context)::HTTP.Response
+function to_response(ctx::Context)::Response
     getfield(ctx, :response) !== nothing && return getfield(ctx, :response)
-    response = HTTP.Response(ctx.status, collect(pairs(ctx.headers)), ctx.body)
-    for cookie in ctx.cookies_out
-        HTTP.Cookies.addcookie!(response, cookie)
+    apply_default_headers(ctx)
+    if ctx.cookies_out !== nothing
+        for cookie in ctx.cookies_out
+            appendheader!(ctx.headers, "Set-Cookie" => HTTP.Cookies.stringify(cookie, false))
+        end
     end
-    return apply_default_headers(response, ctx)
+    response = Response(ctx.status, ctx.headers === nothing ? Headers() : ctx.headers, ctx.body)
+    return response
 end
 
 apply_result!(ctx::Context, result::Context) = begin
@@ -526,11 +597,15 @@ apply_result!(ctx::Context, result::Context) = begin
     ctx.body = result.body
     ctx.cookies_out = result.cookies_out
     ctx.state = result.state
+    ctx.content_type = result.content_type
+    ctx.query_params = result.query_params
+    ctx.form_params = result.form_params
+    ctx.multipart_parts = result.multipart_parts
     ctx.varies_on_cookie = result.varies_on_cookie
     return ctx
 end
 
-apply_result!(ctx::Context, result::HTTP.Response) = begin
+apply_result!(ctx::Context, result::Response) = begin
     response!(ctx, result)
     return ctx
 end

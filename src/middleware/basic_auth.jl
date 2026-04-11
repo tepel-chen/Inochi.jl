@@ -4,10 +4,10 @@
 Create middleware that protects a route with HTTP Basic authentication.
 """
 function basicAuth(; username::AbstractString, password::AbstractString, realm::AbstractString = "Restricted")
-    expected = String(username) * ":" * String(password)
+    expected = username * ":" * password
 
     return function (ctx::Context)
-        authorization = HTTP.header(ctx.req, "Authorization", "")
+        authorization = get(ctx.req.headers, "Authorization", "")
 
         if startswith(authorization, "Basic ")
             encoded = authorization[7:end]
@@ -18,7 +18,7 @@ function basicAuth(; username::AbstractString, password::AbstractString, realm::
         end
 
         status!(ctx, 401)
-        header!(ctx, "WWW-Authenticate", "Basic realm=\"" * String(realm) * "\"")
+        header!(ctx, "WWW-Authenticate", "Basic realm=\"" * realm * "\"")
         body!(ctx, "Unauthorized")
         return ctx
     end

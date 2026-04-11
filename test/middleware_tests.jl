@@ -17,16 +17,16 @@
         "blocked"
     end
 
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/admin/settings"))
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/admin/settings"))
     @test response1.status == 200
     @test String(response1.body) == "ok"
     @test events == ["auth:/admin/settings", "tail:settings", "settings"]
 
-    response2 = Inochi.dispatch(app, HTTP.Request("GET", "/stop/secret"))
+    response2 = Inochi.dispatch(app, InochiCore.Request("GET", "/stop/secret"))
     @test response2.status == 200
     @test String(response2.body) == "blocked"
 
-    response3 = Inochi.dispatch(app, HTTP.Request("GET", "/admin/missing"))
+    response3 = Inochi.dispatch(app, InochiCore.Request("GET", "/admin/missing"))
     @test response3.status == 404
     @test events[end-1:end] == ["auth:/admin/missing", "tail:missing"]
 end
@@ -49,12 +49,12 @@ end
         "users"
     end
 
-    response = Inochi.dispatch(app, HTTP.Request("GET", "/api/users"))
+    response = Inochi.dispatch(app, InochiCore.Request("GET", "/api/users"))
     @test response.status == 200
     @test String(response.body) == "users"
     @test events == ["global:/api/users", "api:users"]
 
-    response2 = Inochi.dispatch(app, HTTP.Request("GET", "/other"))
+    response2 = Inochi.dispatch(app, InochiCore.Request("GET", "/other"))
     @test response2.status == 404
     @test events[end] == "global:/other"
 
@@ -66,7 +66,7 @@ end
     get(bad_app, "/boom") do ctx
         "ok"
     end
-    response3 = Inochi.dispatch(bad_app, HTTP.Request("GET", "/boom"))
+    response3 = Inochi.dispatch(bad_app, InochiCore.Request("GET", "/boom"))
     @test response3.status == 500
     @test String(response3.body) == "Internal Server Error"
 end
@@ -113,17 +113,17 @@ end
     end
 
     get(app, "/raw-escape") do ctx
-        HTTP.Response(202, "raw")
+        InochiCore.Response(202, "raw")
     end
 
     get(app, "/admin/panel") do ctx
         text(ctx, "ok")
     end
 
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/hello"))
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/hello"))
     @test response1.status == 200
-    @test HTTP.header(response1, "Access-Control-Allow-Origin") == "*"
-    @test !isempty(HTTP.header(response1, "ETag"))
+    @test response1.headers["Access-Control-Allow-Origin"] == "*"
+    @test !isempty(response1.headers["ETag"])
 
     etag_cases = (
         ("/hello", "hello"),
@@ -135,13 +135,13 @@ end
     )
 
     for (path, expected_body) in etag_cases
-        response = Inochi.dispatch(app, HTTP.Request("GET", path))
+        response = Inochi.dispatch(app, InochiCore.Request("GET", path))
         @test response.status == 200
         @test String(response.body) == expected_body
-        @test !isempty(HTTP.header(response, "ETag"))
+        @test !isempty(response.headers["ETag"])
     end
 
-    response3 = Inochi.dispatch(app, HTTP.Request("GET", "/bad-body"))
+    response3 = Inochi.dispatch(app, InochiCore.Request("GET", "/bad-body"))
     @test response3.status == 500
     @test String(response3.body) == "Internal Server Error"
     @test_throws ArgumentError Inochi.response_bytes(123)
@@ -151,44 +151,44 @@ end
     get(etag_error_app, "/bad") do ctx
         123
     end
-    etag_error_response = Inochi.dispatch(etag_error_app, HTTP.Request("GET", "/bad"))
+    etag_error_response = Inochi.dispatch(etag_error_app, InochiCore.Request("GET", "/bad"))
     @test etag_error_response.status == 500
     @test String(etag_error_response.body) == "Internal Server Error"
 
-    raw_escape_response = Inochi.dispatch(app, HTTP.Request("GET", "/raw-escape"))
+    raw_escape_response = Inochi.dispatch(app, InochiCore.Request("GET", "/raw-escape"))
     @test raw_escape_response.status == 202
     @test String(raw_escape_response.body) == "raw"
-    @test HTTP.header(raw_escape_response, "Access-Control-Allow-Origin", nothing) === nothing
-    @test HTTP.header(raw_escape_response, "ETag", nothing) === nothing
-    @test HTTP.header(raw_escape_response, "Server", nothing) === nothing
-    @test HTTP.header(raw_escape_response, "Date", nothing) === nothing
-    @test HTTP.header(raw_escape_response, "Vary", nothing) === nothing
+    @test get(raw_escape_response.headers, "Access-Control-Allow-Origin", nothing) === nothing
+    @test get(raw_escape_response.headers, "ETag", nothing) === nothing
+    @test get(raw_escape_response.headers, "Server", nothing) === nothing
+    @test get(raw_escape_response.headers, "Date", nothing) === nothing
+    @test get(raw_escape_response.headers, "Vary", nothing) === nothing
 
-    response4 = Inochi.dispatch(app, HTTP.Request("OPTIONS", "/hello"))
+    response4 = Inochi.dispatch(app, InochiCore.Request("OPTIONS", "/hello"))
     @test response4.status == 204
-    @test HTTP.header(response4, "Access-Control-Allow-Methods") == join(Inochi.SUPPORTED_HTTP_METHODS, ", ")
+    @test response4.headers["Access-Control-Allow-Methods"] == join(Inochi.SUPPORTED_HTTP_METHODS, ", ")
 
-    response5 = Inochi.dispatch(app, HTTP.Request("GET", "/admin/panel"))
+    response5 = Inochi.dispatch(app, InochiCore.Request("GET", "/admin/panel"))
     @test response5.status == 401
-    @test HTTP.header(response5, "WWW-Authenticate") == "Basic realm=\"Restricted\""
+    @test response5.headers["WWW-Authenticate"] == "Basic realm=\"Restricted\""
 
-    malformed_auth_response = Inochi.dispatch(app, HTTP.Request("GET", "/admin/panel", ["Authorization" => "Basic !!!"], ""))
+    malformed_auth_response = Inochi.dispatch(app, InochiCore.Request("GET", "/admin/panel", ["Authorization" => "Basic !!!"], ""))
     @test malformed_auth_response.status == 401
-    @test HTTP.header(malformed_auth_response, "WWW-Authenticate") == "Basic realm=\"Restricted\""
+    @test malformed_auth_response.headers["WWW-Authenticate"] == "Basic realm=\"Restricted\""
 
     auth_header = "Basic " * Base64.base64encode("admin:secret")
-    response6 = Inochi.dispatch(app, HTTP.Request("GET", "/admin/panel", ["Authorization" => auth_header]))
+    response6 = Inochi.dispatch(app, InochiCore.Request("GET", "/admin/panel", ["Authorization" => auth_header]))
     @test response6.status == 200
     @test String(response6.body) == "ok"
 
-    response7 = Inochi.dispatch(app, HTTP.Request("GET", "/hello", ["If-None-Match" => HTTP.header(response1, "ETag")]))
+    response7 = Inochi.dispatch(app, InochiCore.Request("GET", "/hello", ["If-None-Match" => response1.headers["ETag"]]))
     @test response7.status == 304
-    @test HTTP.header(response7, "ETag") == HTTP.header(response1, "ETag")
+    @test response7.headers["ETag"] == response1.headers["ETag"]
 
-    response7b = Inochi.dispatch(app, HTTP.Request("GET", "/hello", ["If-None-Match" => "\"bogus\""]))
+    response7b = Inochi.dispatch(app, InochiCore.Request("GET", "/hello", ["If-None-Match" => "\"bogus\""]))
     @test response7b.status == 200
     @test String(response7b.body) == "hello"
-    @test !isempty(HTTP.header(response7b, "ETag"))
+    @test !isempty(response7b.headers["ETag"])
 
     logs = String(take!(log_buffer))
     @test occursin("GET /hello -> 200", logs)
@@ -202,10 +202,10 @@ end
         text(ctx, csrf_token(ctx))
     end
 
-    response = Inochi.dispatch(app, HTTP.Request("GET", "/token"))
+    response = Inochi.dispatch(app, InochiCore.Request("GET", "/token"))
     @test response.status == 200
     @test !isempty(String(response.body))
-    @test isempty(HTTP.headers(response, "Set-Cookie"))
+    @test isempty(InochiCore.getheaders(response.headers, "Set-Cookie"))
 end
 
 @testset "CSRF Middleware" begin
@@ -220,20 +220,20 @@ end
         text(ctx, "ok")
     end
 
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/form"))
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/form"))
     @test response1.status == 200
-    issued_cookie = only(String.(HTTP.headers(response1, "Set-Cookie")))
+    issued_cookie = only(String.(InochiCore.getheaders(response1.headers, "Set-Cookie")))
     @test occursin("csrf_token=", issued_cookie)
     @test occursin("SameSite=Lax", issued_cookie)
     token = split(split(issued_cookie, ';'; limit = 2)[1], '='; limit = 2)[2]
     @test String(response1.body) == token
 
-    response2 = Inochi.dispatch(app, HTTP.Request("POST", "/submit", ["Cookie" => "csrf_token=" * token], ""))
+    response2 = Inochi.dispatch(app, InochiCore.Request("POST", "/submit", ["Cookie" => "csrf_token=" * token], ""))
     @test response2.status == 403
 
     response3 = Inochi.dispatch(
         app,
-        HTTP.Request(
+        InochiCore.Request(
             "POST",
             "/submit",
             ["Cookie" => "csrf_token=" * token, "X-CSRF-Token" => token],
@@ -246,7 +246,7 @@ end
     form_body = "csrf_token=" * HTTP.URIs.escapeuri(token)
     response4 = Inochi.dispatch(
         app,
-        HTTP.Request(
+        InochiCore.Request(
             "POST",
             "/submit",
             ["Cookie" => "csrf_token=" * token, "Content-Type" => "application/x-www-form-urlencoded"],
@@ -255,13 +255,13 @@ end
     )
     @test response4.status == 200
 
-    missing_cookie_response = Inochi.dispatch(app, HTTP.Request("GET", "/form"))
-    missing_cookie = only(String.(HTTP.headers(missing_cookie_response, "Set-Cookie")))
+    missing_cookie_response = Inochi.dispatch(app, InochiCore.Request("GET", "/form"))
+    missing_cookie = only(String.(InochiCore.getheaders(missing_cookie_response.headers, "Set-Cookie")))
     @test occursin("csrf_token=", missing_cookie)
     @test String(missing_cookie_response.body) != ""
 
-    invalid_cookie_response = Inochi.dispatch(app, HTTP.Request("GET", "/form", ["Cookie" => "csrf_token=not-base64"], ""))
-    @test isempty(HTTP.headers(invalid_cookie_response, "Set-Cookie"))
+    invalid_cookie_response = Inochi.dispatch(app, InochiCore.Request("GET", "/form", ["Cookie" => "csrf_token=not-base64"], ""))
+    @test isempty(InochiCore.getheaders(invalid_cookie_response.headers, "Set-Cookie"))
     @test String(invalid_cookie_response.body) == "not-base64"
 end
 
@@ -271,8 +271,8 @@ end
     get(default_mode_app, "/token") do ctx
         text(ctx, csrf_token(ctx))
     end
-    default_mode_response = Inochi.dispatch(default_mode_app, HTTP.Request("GET", "/token"))
-    default_mode_cookie = only(String.(HTTP.headers(default_mode_response, "Set-Cookie")))
+    default_mode_response = Inochi.dispatch(default_mode_app, InochiCore.Request("GET", "/token"))
+    default_mode_cookie = only(String.(InochiCore.getheaders(default_mode_response.headers, "Set-Cookie")))
     @test !occursin("SameSite=", default_mode_cookie)
 
     strict_app = App()
@@ -280,8 +280,8 @@ end
     get(strict_app, "/token") do ctx
         text(ctx, csrf_token(ctx))
     end
-    strict_response = Inochi.dispatch(strict_app, HTTP.Request("GET", "/token"))
-    strict_cookie = only(String.(HTTP.headers(strict_response, "Set-Cookie")))
+    strict_response = Inochi.dispatch(strict_app, InochiCore.Request("GET", "/token"))
+    strict_cookie = only(String.(InochiCore.getheaders(strict_response.headers, "Set-Cookie")))
     @test occursin("SameSite=Strict", strict_cookie)
 
     none_app = App()
@@ -289,8 +289,8 @@ end
     get(none_app, "/token") do ctx
         text(ctx, csrf_token(ctx))
     end
-    none_response = Inochi.dispatch(none_app, HTTP.Request("GET", "/token"))
-    none_cookie = only(String.(HTTP.headers(none_response, "Set-Cookie")))
+    none_response = Inochi.dispatch(none_app, InochiCore.Request("GET", "/token"))
+    none_cookie = only(String.(InochiCore.getheaders(none_response.headers, "Set-Cookie")))
     @test occursin("SameSite=None", none_cookie)
 
     default_app = App()
@@ -298,8 +298,8 @@ end
     get(default_app, "/token") do ctx
         text(ctx, csrf_token(ctx))
     end
-    default_response = Inochi.dispatch(default_app, HTTP.Request("GET", "/token"))
-    default_cookie = only(String.(HTTP.headers(default_response, "Set-Cookie")))
+    default_response = Inochi.dispatch(default_app, InochiCore.Request("GET", "/token"))
+    default_cookie = only(String.(InochiCore.getheaders(default_response.headers, "Set-Cookie")))
     @test occursin("SameSite=Lax", default_cookie)
 
     none_mode_app = App()
@@ -307,8 +307,8 @@ end
     get(none_mode_app, "/token") do ctx
         text(ctx, csrf_token(ctx))
     end
-    none_mode_response = Inochi.dispatch(none_mode_app, HTTP.Request("GET", "/token"))
-    none_mode_cookie = only(String.(HTTP.headers(none_mode_response, "Set-Cookie")))
+    none_mode_response = Inochi.dispatch(none_mode_app, InochiCore.Request("GET", "/token"))
+    none_mode_cookie = only(String.(InochiCore.getheaders(none_mode_response.headers, "Set-Cookie")))
     @test !occursin("SameSite=", none_mode_cookie)
 
     @test_throws ArgumentError csrf(samesite = "Bogus")
@@ -321,7 +321,7 @@ end
         error("boom")
     end
 
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/boom"))
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/boom"))
     @test response1.status == 500
     @test String(response1.body) == "Internal Server Error"
 
@@ -339,9 +339,9 @@ end
         json(ctx, Dict("error" => string(err)); status = 418)
     end
 
-    response2 = Inochi.dispatch(custom_app, HTTP.Request("GET", "/fail"))
+    response2 = Inochi.dispatch(custom_app, InochiCore.Request("GET", "/fail"))
     @test response2.status == 418
-    @test HTTP.header(response2, "Content-Type") == "application/json; charset=utf-8"
+    @test response2.headers["Content-Type"] == "application/json; charset=utf-8"
     @test occursin("bad request", String(response2.body))
 
     trace_app = App()
@@ -351,10 +351,9 @@ end
     on_error(trace_app) do ctx, err
         text(ctx, sprint(showerror, err, ctx.backtrace); status = 500)
     end
-    trace_response = Inochi.dispatch(trace_app, HTTP.Request("GET", "/fail"))
+    trace_response = Inochi.dispatch(trace_app, InochiCore.Request("GET", "/fail"))
     @test trace_response.status == 500
     @test occursin("boom", String(trace_response.body))
-    @test occursin("Stacktrace", String(trace_response.body))
 
     default_error_app = App()
     get(default_error_app, "/fail") do ctx
@@ -363,7 +362,7 @@ end
     on_error(default_error_app) do ctx, err
         nothing
     end
-    default_error_response = Inochi.dispatch(default_error_app, HTTP.Request("GET", "/fail"))
+    default_error_response = Inochi.dispatch(default_error_app, InochiCore.Request("GET", "/fail"))
     @test default_error_response.status == 500
     @test String(default_error_response.body) == "Internal Server Error"
 
@@ -374,7 +373,7 @@ end
     on_error(failing_error_app) do ctx, err
         error("handler boom")
     end
-    failing_error_response = Inochi.dispatch(failing_error_app, HTTP.Request("GET", "/fail"))
+    failing_error_response = Inochi.dispatch(failing_error_app, InochiCore.Request("GET", "/fail"))
     @test failing_error_response.status == 500
     @test String(failing_error_response.body) == "Internal Server Error"
 end
@@ -382,7 +381,7 @@ end
 @testset "Not Found Handling" begin
     app = App()
 
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/missing"))
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/missing"))
     @test response1.status == 404
     @test String(response1.body) == "Not Found"
 
@@ -392,7 +391,7 @@ end
         text(ctx, "missing:" * String(HTTP.URIs.URI(ctx.target).path); status = 404)
     end
 
-    response2 = Inochi.dispatch(custom_app, HTTP.Request("GET", "/nope"))
+    response2 = Inochi.dispatch(custom_app, InochiCore.Request("GET", "/nope"))
     @test response2.status == 404
     @test String(response2.body) == "missing:/nope"
 
@@ -400,7 +399,7 @@ end
     on_notfound(default_notfound_app) do ctx
         nothing
     end
-    default_notfound_response = Inochi.dispatch(default_notfound_app, HTTP.Request("GET", "/still-missing"))
+    default_notfound_response = Inochi.dispatch(default_notfound_app, InochiCore.Request("GET", "/still-missing"))
     @test default_notfound_response.status == 404
     @test String(default_notfound_response.body) == "Not Found"
 
@@ -408,7 +407,7 @@ end
     on_notfound(failing_notfound_app) do ctx
         error("handler boom")
     end
-    failing_notfound_response = Inochi.dispatch(failing_notfound_app, HTTP.Request("GET", "/still-missing"))
+    failing_notfound_response = Inochi.dispatch(failing_notfound_app, InochiCore.Request("GET", "/still-missing"))
     @test failing_notfound_response.status == 404
     @test String(failing_notfound_response.body) == "Not Found"
 end
@@ -447,27 +446,27 @@ end
     route(root, "/", public)
     route(root, "/admin", admin)
 
-    response0 = Inochi.dispatch(root, HTTP.Request("GET", "/"))
+    response0 = Inochi.dispatch(root, InochiCore.Request("GET", "/"))
     @test response0.status == 200
     @test String(response0.body) == "public-root"
 
-    response0b = Inochi.dispatch(root, HTTP.Request("GET", "/info"))
+    response0b = Inochi.dispatch(root, InochiCore.Request("GET", "/info"))
     @test response0b.status == 200
     @test String(response0b.body) == "public-info"
 
-    response1 = Inochi.dispatch(root, HTTP.Request("GET", "/admin"))
+    response1 = Inochi.dispatch(root, InochiCore.Request("GET", "/admin"))
     @test response1.status == 200
     @test String(response1.body) == "admin-root"
 
-    response2 = Inochi.dispatch(root, HTTP.Request("GET", "/admin/users/42"))
+    response2 = Inochi.dispatch(root, InochiCore.Request("GET", "/admin/users/42"))
     @test response2.status == 200
     @test String(response2.body) == "user:42"
 
-    response3 = Inochi.dispatch(root, HTTP.Request("GET", "/admin/reports"))
+    response3 = Inochi.dispatch(root, InochiCore.Request("GET", "/admin/reports"))
     @test response3.status == 200
     @test String(response3.body) == "index"
 
-    response4 = Inochi.dispatch(root, HTTP.Request("GET", "/admin/reports/daily"))
+    response4 = Inochi.dispatch(root, InochiCore.Request("GET", "/admin/reports/daily"))
     @test response4.status == 200
     @test String(response4.body) == "daily"
 

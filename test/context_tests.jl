@@ -24,34 +24,40 @@ using Dates
     get(app, "/ctx/raw") do ctx
         header!(ctx, "X-Ignored", "yes")
         setcookie(ctx, "session", "abc"; path = "/")
-        HTTP.Response(202, ["X-Direct" => "1"], "raw")
+        InochiCore.Response(202, ["X-Direct" => "1"], "raw")
     end
 
-    response = Inochi.dispatch(app, HTTP.Request("GET", "/ctx/42"))
+    response = Inochi.dispatch(app, InochiCore.Request("GET", "/ctx/42"))
     @test response.status == 201
     @test String(response.body) == "id=42"
-    @test HTTP.header(response, "X-Middleware") == "on"
+    @test response.headers["X-Middleware"] == "on"
 
-    html_response = Inochi.dispatch(app, HTTP.Request("GET", "/ctx/html"))
+    state_ctx = Context(app, InochiCore.Request("GET", "/ctx/1"))
+    @test state_ctx.state === nothing
+    @test set!(state_ctx, :seen, true) === true
+    @test state_ctx.state !== nothing
+    @test get(state_ctx, :seen, false) === true
+
+    html_response = Inochi.dispatch(app, InochiCore.Request("GET", "/ctx/html"))
     @test html_response.status == 200
     @test String(html_response.body) == "<h1>ok</h1>"
-    @test HTTP.header(html_response, "Content-Type") == "text/html; charset=utf-8"
+    @test html_response.headers["Content-Type"] == "text/html; charset=utf-8"
 
-    redirect_response = Inochi.dispatch(app, HTTP.Request("GET", "/ctx/redirect"))
+    redirect_response = Inochi.dispatch(app, InochiCore.Request("GET", "/ctx/redirect"))
     @test redirect_response.status == 303
-    @test HTTP.header(redirect_response, "Location") == "/next"
+    @test redirect_response.headers["Location"] == "/next"
     @test String(redirect_response.body) == ""
 
-    raw_response = Inochi.dispatch(app, HTTP.Request("GET", "/ctx/raw"))
+    raw_response = Inochi.dispatch(app, InochiCore.Request("GET", "/ctx/raw"))
     @test raw_response.status == 202
     @test String(raw_response.body) == "raw"
-    @test HTTP.header(raw_response, "X-Direct") == "1"
-    @test HTTP.header(raw_response, "X-Ignored", nothing) === nothing
-    @test HTTP.header(raw_response, "X-Middleware", nothing) === nothing
-    @test isempty(HTTP.headers(raw_response, "Set-Cookie"))
-    @test HTTP.header(raw_response, "Server", nothing) === nothing
-    @test HTTP.header(raw_response, "Date", nothing) === nothing
-    @test HTTP.header(raw_response, "Vary", nothing) === nothing
+    @test raw_response.headers["X-Direct"] == "1"
+    @test get(raw_response.headers, "X-Ignored", nothing) === nothing
+    @test get(raw_response.headers, "X-Middleware", nothing) === nothing
+    @test isempty(InochiCore.getheaders(raw_response.headers, "Set-Cookie"))
+    @test get(raw_response.headers, "Server", nothing) === nothing
+    @test get(raw_response.headers, "Date", nothing) === nothing
+    @test get(raw_response.headers, "Vary", nothing) === nothing
 end
 
 @testset "Date Header Cache" begin
@@ -71,10 +77,10 @@ end
         render_text(ctx, "hello {{name}}", Dict("name" => "inochi"))
     end
 
-    inline_response = Inochi.dispatch(app, HTTP.Request("GET", "/inline"))
+    inline_response = Inochi.dispatch(app, InochiCore.Request("GET", "/inline"))
     @test inline_response.status == 200
     @test String(inline_response.body) == "hello inochi"
-    @test HTTP.header(inline_response, "Content-Type") == "text/html; charset=utf-8"
+    @test inline_response.headers["Content-Type"] == "text/html; charset=utf-8"
 
     mktempdir() do tmpdir
         app.views = tmpdir
@@ -84,11 +90,11 @@ end
             render(ctx, "hello.mustache", Dict("name" => "Inochi"))
         end
 
-        file_response = Inochi.dispatch(app, HTTP.Request("GET", "/file"))
+        file_response = Inochi.dispatch(app, InochiCore.Request("GET", "/file"))
         @test file_response.status == 200
         @test String(file_response.body) == "<h1>Inochi</h1>"
 
-        bad_ctx = Context(app, HTTP.Request("GET", "/"))
+        bad_ctx = Context(app, InochiCore.Request("GET", "/"))
         @test_throws ArgumentError render(bad_ctx, "../secret.mustache", Dict("name" => "x"))
         @test_throws Exception bad_ctx.render
     end
@@ -105,10 +111,10 @@ end
             render(ctx, "fallback.mustache", Dict("name" => "fallback"))
         end
 
-        fallback_views_response = Inochi.dispatch(fallback_views_app, HTTP.Request("GET", "/fallback"))
+        fallback_views_response = Inochi.dispatch(fallback_views_app, InochiCore.Request("GET", "/fallback"))
         @test fallback_views_response.status == 200
         @test String(fallback_views_response.body) == "<p>fallback</p>"
-        @test Inochi.resolve_views_root(Context(App(), HTTP.Request("GET", "/"))) == joinpath(Inochi.executable_root(), "views")
+        @test Inochi.resolve_views_root(Context(App(), InochiCore.Request("GET", "/"))) == joinpath(Inochi.executable_root(), "views")
     finally
         isfile(fallback_template) && rm(fallback_template; force = true)
     end
@@ -126,7 +132,7 @@ end
                 render(ctx, "default.mustache", Dict("name" => "default"))
             end
 
-            default_views_response = Inochi.dispatch(default_views_app, HTTP.Request("GET", "/default-views"))
+            default_views_response = Inochi.dispatch(default_views_app, InochiCore.Request("GET", "/default-views"))
             @test default_views_response.status == 200
             @test String(default_views_response.body) == "<p>default</p>"
         end
@@ -146,13 +152,27 @@ end
             render(ctx, "hello.mustache", Dict("name" => "cached"))
         end
 
-        response = Inochi.dispatch(file_renderer_app, HTTP.Request("GET", "/file-renderer"))
+        response = Inochi.dispatch(file_renderer_app, InochiCore.Request("GET", "/file-renderer"))
         @test response.status == 200
         @test String(response.body) == "<p>cached</p>"
     end
 end
 
 @testset "Request Parsers" begin
+    function parse_inochi_request(raw::String)
+        bytes = Vector{UInt8}(codeunits(raw))
+        state_ref = Ref(InochiCore._RequestState())
+        parser = InochiCore.LlhttpWrapper.Parser(InochiCore.LlhttpWrapper.HTTP_REQUEST; settings = InochiCore._parser_settings())
+        InochiCore.LlhttpWrapper.set_userdata!(parser, Base.pointer_from_objref(state_ref))
+        GC.@preserve state_ref parser bytes begin
+            code = InochiCore.LlhttpWrapper.execute!(parser, bytes)
+            code == InochiCore.LlhttpWrapper.HPE_OK || code == InochiCore.LlhttpWrapper.HPE_PAUSED || code == InochiCore.LlhttpWrapper.HPE_PAUSED_UPGRADE || error("parse failed")
+            queued = InochiCore._next_completed_request(state_ref[])
+            queued === nothing && error("incomplete HTTP request")
+            return queued.request
+        end
+    end
+
     app = App()
 
     post(app, "/text") do ctx
@@ -174,36 +194,64 @@ end
         text(ctx, string(query["page"], ":", query["q"]))
     end
 
-    response1 = Inochi.dispatch(app, HTTP.Request("POST", "/text", ["Content-Type" => "text/plain; charset=utf-8"], "hello"))
+    response1 = Inochi.dispatch(app, InochiCore.Request("POST", "/text", ["Content-Type" => "text/plain; charset=utf-8"], "hello"))
     @test response1.status == 200
     @test String(response1.body) == "hello"
 
-    response2 = Inochi.dispatch(app, HTTP.Request("POST", "/json", ["Content-Type" => "application/json"], "{\"name\":\"alice\",\"count\":3}"))
+    response2 = Inochi.dispatch(app, InochiCore.Request("POST", "/json", ["Content-Type" => "application/json"], "{\"name\":\"alice\",\"count\":3}"))
     @test response2.status == 200
     @test String(response2.body) == "alice:3"
 
-    response3 = Inochi.dispatch(app, HTTP.Request("POST", "/form", ["Content-Type" => "application/x-www-form-urlencoded"], "x=10&y=hello"))
+    response3 = Inochi.dispatch(app, InochiCore.Request("POST", "/form", ["Content-Type" => "application/x-www-form-urlencoded"], "x=10&y=hello"))
     @test response3.status == 200
     @test String(response3.body) == "10:hello"
 
-    response4 = Inochi.dispatch(app, HTTP.Request("GET", "/query?page=2&q=inochi"))
+    response4 = Inochi.dispatch(app, InochiCore.Request("GET", "/query?page=2&q=inochi"))
     @test response4.status == 200
     @test String(response4.body) == "2:inochi"
 
+    cached_ctx = Context(app, InochiCore.Request("GET", "/cache?page=1&q=hello", ["Content-Type" => "application/x-www-form-urlencoded"], "x=10&y=hello"))
+    @test reqquery(cached_ctx) === reqquery(cached_ctx)
+    @test reqform(cached_ctx) === reqform(cached_ctx)
+    @test Inochi.request_content_type(cached_ctx) === Inochi.request_content_type(cached_ctx)
+
+    lazy_request = parse_inochi_request("POST /lazy HTTP/1.1\r\nHost: example.com\r\nContent-Type: text/plain\r\nContent-Length: 11\r\n\r\nhello world")
+    @test lazy_request.body isa InochiCore.LazyBody
+    @test lazy_request.body.cache === nothing
+    lazy_ctx = Context(app, lazy_request)
+    lazy_text = reqtext(lazy_ctx)
+    @test lazy_text isa String
+    @test lazy_text == "hello world"
+    @test lazy_request.body.cache === nothing
+    @test String(InochiCore.bodybytes(lazy_request)) == "hello world"
+    @test lazy_request.body.cache !== nothing
+
+    limited_state_ref = Ref(InochiCore._RequestState(4))
+    limited_parser = InochiCore.LlhttpWrapper.Parser(InochiCore.LlhttpWrapper.HTTP_REQUEST; settings = InochiCore._parser_settings())
+    InochiCore.LlhttpWrapper.set_userdata!(limited_parser, Base.pointer_from_objref(limited_state_ref))
+    limited_raw = Vector{UInt8}(codeunits("POST /limited HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nhello world"))
+    GC.@preserve limited_state_ref limited_parser limited_raw begin
+        limited_code = InochiCore.LlhttpWrapper.execute!(limited_parser, limited_raw)
+        @test limited_code == InochiCore.LlhttpWrapper.HPE_PAUSED
+        @test limited_state_ref[].body_too_large
+        @test limited_state_ref[].body_start == 0
+        @test isempty(limited_state_ref[].completed)
+    end
+
     parser_app = App()
 
-    bad_text_ctx = Context(parser_app, HTTP.Request("POST", "/text", ["Content-Type" => "application/json"], "\"hello\""))
+    bad_text_ctx = Context(parser_app, InochiCore.Request("POST", "/text", ["Content-Type" => "application/json"], "\"hello\""))
     @test_throws ArgumentError reqtext(bad_text_ctx)
     @test_throws Exception bad_text_ctx.reqtext
 
-    bad_json_ctx = Context(parser_app, HTTP.Request("POST", "/json", ["Content-Type" => "text/plain"], "{\"name\":\"alice\"}"))
+    bad_json_ctx = Context(parser_app, InochiCore.Request("POST", "/json", ["Content-Type" => "text/plain"], "{\"name\":\"alice\"}"))
     @test_throws ArgumentError reqjson(bad_json_ctx)
     @test_throws Exception bad_json_ctx.reqjson
 
-    bad_form_ctx = Context(parser_app, HTTP.Request("POST", "/form", ["Content-Type" => "application/json"], "x=10"))
+    bad_form_ctx = Context(parser_app, InochiCore.Request("POST", "/form", ["Content-Type" => "application/json"], "x=10"))
     @test_throws ArgumentError reqform(bad_form_ctx)
 
-    charset_json_ctx = Context(parser_app, HTTP.Request("POST", "/json", ["Content-Type" => "application/json; charset=utf-8"], "{\"name\":\"bob\",\"count\":4}"))
+    charset_json_ctx = Context(parser_app, InochiCore.Request("POST", "/json", ["Content-Type" => "application/json; charset=utf-8"], "{\"name\":\"bob\",\"count\":4}"))
     @test reqjson(charset_json_ctx)["name"] == "bob"
 
     multipart_body = join([
@@ -219,7 +267,7 @@ end
         "--boundary123--",
         "",
     ], "\r\n")
-    multipart_req = HTTP.Request(
+    multipart_req = InochiCore.Request(
         "POST",
         "/upload",
         [
@@ -243,8 +291,9 @@ end
     @test ctx_file_part !== nothing
     @test ctx_file_part.filename == "pixel.jpg"
     @test length(reqmultipart(multipart_ctx)) == 2
+    @test reqmultipart(multipart_ctx) === reqmultipart(multipart_ctx)
 
-    bad_multipart_ctx = Context(parser_app, HTTP.Request("POST", "/upload", ["Content-Type" => "application/json"], "{}"))
+    bad_multipart_ctx = Context(parser_app, InochiCore.Request("POST", "/upload", ["Content-Type" => "application/json"], "{}"))
     @test_throws ArgumentError reqmultipart(bad_multipart_ctx)
 end
 
@@ -261,17 +310,17 @@ end
         text(ctx, "ok")
     end
 
-    req = HTTP.Request("GET", "/cookie", ["Cookie" => "session=abc; theme=dark"])
+    req = InochiCore.Request("GET", "/cookie", ["Cookie" => "session=abc; theme=dark"])
     response = Inochi.dispatch(app, req)
     @test response.status == 200
     @test String(response.body) == "abc:dark"
-    @test HTTP.header(response, "Vary") == "Origin, Cookie"
+    @test response.headers["Vary"] == "Origin, Cookie"
 
-    response2 = Inochi.dispatch(app, HTTP.Request("GET", "/set-cookie"))
-    set_cookie_headers = String.(HTTP.headers(response2, "Set-Cookie"))
+    response2 = Inochi.dispatch(app, InochiCore.Request("GET", "/set-cookie"))
+    set_cookie_headers = String.(InochiCore.getheaders(response2.headers, "Set-Cookie"))
     @test response2.status == 200
     @test String(response2.body) == "ok"
-    @test HTTP.header(response2, "Vary") == "Origin"
+    @test response2.headers["Vary"] == "Origin"
     @test length(set_cookie_headers) == 2
     @test any(header -> occursin("session=abc", header), set_cookie_headers)
     @test any(header -> occursin("HttpOnly", header), set_cookie_headers)
@@ -292,26 +341,26 @@ end
         text(ctx, string(secure_cookie(ctx, "session"; default = "missing")))
     end
 
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/secure-set"))
-    cookie_header = only(String.(HTTP.headers(response1, "Set-Cookie")))
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/secure-set"))
+    cookie_header = only(String.(InochiCore.getheaders(response1.headers, "Set-Cookie")))
     secure_value = first(split(cookie_header, ';'; limit = 2))
     @test occursin("session=", secure_value)
 
-    req = HTTP.Request("GET", "/secure-read", ["Cookie" => secure_value])
+    req = InochiCore.Request("GET", "/secure-read", ["Cookie" => secure_value])
     response2 = Inochi.dispatch(app, req)
     @test String(response2.body) == "abc123"
-    @test HTTP.header(response2, "Vary") == "Origin, Cookie"
+    @test response2.headers["Vary"] == "Origin, Cookie"
 
     tampered = secure_value[1:end-1] * (secure_value[end] == '0' ? "1" : "0")
-    bad_req = HTTP.Request("GET", "/secure-read", ["Cookie" => tampered])
+    bad_req = InochiCore.Request("GET", "/secure-read", ["Cookie" => tampered])
     response3 = Inochi.dispatch(app, bad_req)
     @test String(response3.body) == "missing"
-    @test HTTP.header(response3, "Vary") == "Origin, Cookie"
+    @test response3.headers["Vary"] == "Origin, Cookie"
 
     invalid_payload = "a"
     invalid_signature = Inochi.secure_cookie_signature(app.config["secret"], invalid_payload)
     invalid_cookie = "session=$(invalid_payload).$(invalid_signature)"
-    invalid_req = HTTP.Request("GET", "/secure-read", ["Cookie" => invalid_cookie])
+    invalid_req = InochiCore.Request("GET", "/secure-read", ["Cookie" => invalid_cookie])
     response4 = Inochi.dispatch(app, invalid_req)
     @test response4.status == 500
     @test String(response4.body) == "Internal Server Error"
@@ -322,7 +371,7 @@ end
         text(ctx, string(secure_cookie(ctx, "session"; default = "missing")))
     end
 
-    missing_secret_req = HTTP.Request("GET", "/secure-read", ["Cookie" => "session=YWJj.invalidsig"])
+    missing_secret_req = InochiCore.Request("GET", "/secure-read", ["Cookie" => "session=YWJj.invalidsig"])
     missing_secret_response = Inochi.dispatch(app_without_config_secret, missing_secret_req)
     @test missing_secret_response.status == 500
     @test String(missing_secret_response.body) == "Internal Server Error"
@@ -336,12 +385,12 @@ end
         text(ctx, string(secure_cookie(ctx, "session"; secret = "alt-secret", default = "missing")))
     end
 
-    explicit_set_response = Inochi.dispatch(app_without_config_secret, HTTP.Request("GET", "/secure-explicit-set"))
-    explicit_cookie_header = only(String.(HTTP.headers(explicit_set_response, "Set-Cookie")))
+    explicit_set_response = Inochi.dispatch(app_without_config_secret, InochiCore.Request("GET", "/secure-explicit-set"))
+    explicit_cookie_header = only(String.(InochiCore.getheaders(explicit_set_response.headers, "Set-Cookie")))
     explicit_value = first(split(explicit_cookie_header, ';'; limit = 2))
     explicit_read_response = Inochi.dispatch(
         app_without_config_secret,
-        HTTP.Request("GET", "/secure-explicit-read", ["Cookie" => explicit_value]),
+        InochiCore.Request("GET", "/secure-explicit-read", ["Cookie" => explicit_value]),
     )
     @test explicit_set_response.status == 200
     @test explicit_read_response.status == 200
@@ -364,8 +413,8 @@ end
 
     response = Inochi.dispatch(
         body_limited,
-        HTTP.Request("POST", "/json", ["Content-Type" => "application/json"], "{\"hello\":1}"),
+        InochiCore.Request("POST", "/json", ["Content-Type" => "application/json"], "{\"hello\":1}"),
     )
-    @test response.status == 500
-    @test String(response.body) == "Internal Server Error"
+    @test response.status == 413
+    @test String(response.body) == "Payload Too Large"
 end

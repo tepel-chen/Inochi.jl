@@ -18,20 +18,20 @@ function executable_root()::String
 end
 
 function path_within_root(path::AbstractString, root::AbstractString)::Bool
-    normalized_path = normpath(String(path))
-    normalized_root = normpath(String(root))
+    normalized_path = normpath(path)
+    normalized_root = normpath(root)
     relative = relpath(normalized_path, normalized_root)
     return relative != ".." && !startswith(relative, ".." * Base.Filesystem.path_separator)
 end
 
 function safe_join(root::AbstractString, path::AbstractString)
-    normalized_root = normpath(abspath(String(root)))
-    candidate = isabspath(path) ? normpath(String(path)) : normpath(joinpath(normalized_root, String(path)))
+    normalized_root = normpath(abspath(root))
+    candidate = isabspath(path) ? normpath(path) : normpath(joinpath(normalized_root, path))
     return path_within_root(candidate, normalized_root) ? candidate : nothing
 end
 
 function content_type_for_path(path::AbstractString)::String
-    mime = string(mime_from_path(String(path)))
+    mime = string(mime_from_path(path))
     return mime in UTF8_MIME_TYPES || startswith(mime, "text/") ? mime * "; charset=utf-8" : mime
 end
 
@@ -49,11 +49,11 @@ end
 
 response_bytes(body::Vector{UInt8}) = body
 response_bytes(body::AbstractVector{UInt8}) = Vector{UInt8}(body)
-response_bytes(body::AbstractString) = Vector{UInt8}(codeunits(String(body)))
+response_bytes(body::AbstractString) = Vector{UInt8}(codeunits(body))
 response_bytes(body) = throw(ArgumentError("Unsupported response body type: $(typeof(body))"))
 
-function if_none_match_matches(req::HTTP.Request, etag::AbstractString)::Bool
-    header = strip(HTTP.header(req, IF_NONE_MATCH_HEADER_NAME, ""))
+function if_none_match_matches(req::Request, etag::AbstractString)::Bool
+    header = strip(get(req.headers, IF_NONE_MATCH_HEADER_NAME, ""))
     isempty(header) && return false
     header == "*" && return true
 
@@ -64,18 +64,18 @@ function if_none_match_matches(req::HTTP.Request, etag::AbstractString)::Bool
     return false
 end
 
-function maybe_not_modified(req::Union{Nothing,HTTP.Request}, etag::AbstractString)::Union{Nothing,HTTP.Response}
+function maybe_not_modified(req::Union{Nothing,Request}, etag::AbstractString)::Union{Nothing,Response}
     req === nothing && return nothing
     if if_none_match_matches(req, etag)
-        return HTTP.Response(304, [ETAG_HEADER_NAME => etag])
+        return Response(304, [ETAG_HEADER_NAME => etag])
     end
     return nothing
 end
 
-function file_response(path::AbstractString; req::Union{Nothing,HTTP.Request} = nothing, root::AbstractString = executable_root())::HTTP.Response
+function file_response(path::AbstractString; req::Union{Nothing,Request} = nothing, root::AbstractString = executable_root())::Response
     resolved = safe_join(root, path)
-    resolved === nothing && return HTTP.Response(403, "Forbidden")
-    isfile(resolved) || return HTTP.Response(404, "Not Found")
+    resolved === nothing && return Response(403, "Forbidden")
+    isfile(resolved) || return Response(404, "Not Found")
 
     etag = etag_for_file(resolved)
     not_modified = maybe_not_modified(req, etag)
@@ -83,7 +83,7 @@ function file_response(path::AbstractString; req::Union{Nothing,HTTP.Request} = 
 
     body = read(resolved)
     headers = ["Content-Type" => content_type_for_path(resolved), ETAG_HEADER_NAME => etag]
-    return HTTP.Response(200, headers, body)
+    return Response(200, headers, body)
 end
 
 """
@@ -91,7 +91,7 @@ end
 
 Return a file response rooted at `root`. Requests outside the root are rejected.
 """
-function sendFile(path::AbstractString; root::AbstractString = executable_root())::HTTP.Response
+function sendFile(path::AbstractString; root::AbstractString = executable_root())::Response
     return file_response(path; root = root)
 end
 
@@ -100,7 +100,7 @@ end
 
 Return a file response rooted at `root`, with `If-None-Match` support from `ctx.req`.
 """
-function sendFile(ctx::Context, path::AbstractString; root::AbstractString = executable_root())::HTTP.Response
+function sendFile(ctx::Context, path::AbstractString; root::AbstractString = executable_root())::Response
     return file_response(path; req = ctx.req, root = root)
 end
 
@@ -110,7 +110,7 @@ end
 Create a handler for serving files rooted at `root`, typically mounted on a wildcard route.
 """
 function static(root::AbstractString)::Function
-    normalized_root = normpath(abspath(String(root)))
+    normalized_root = normpath(abspath(root))
 
     return function (ctx::Context)
         relative_path = get(ctx.params, "*", "")

@@ -6,7 +6,7 @@ const SAFE_HTTP_METHODS = Set(("GET", "HEAD", "OPTIONS", "TRACE"))
 function resolve_samesite(value)
     isnothing(value) && return nothing
 
-    normalized = lowercase(String(value))
+    normalized = lowercase(value)
     if normalized == "default"
         return HTTP.Cookies.SameSiteDefaultMode
     elseif normalized == "lax"
@@ -25,15 +25,14 @@ function generate_csrf_token()::String
     return base64encode(bytes)
 end
 
-function csrf_token(ctx::Context)::String
+function csrf_token(ctx::Context)::AbstractString
     token = get(ctx, :csrf_token, nothing)
-    token isa AbstractString && return String(token)
+    token isa AbstractString && return token
 
     existing = cookie(ctx, CSRF_COOKIE_NAME, nothing)
     if existing isa AbstractString && !isempty(existing)
-        resolved = String(existing)
-        set!(ctx, :csrf_token, resolved)
-        return resolved
+        set!(ctx, :csrf_token, existing)
+        return existing
     end
 
     generated = generate_csrf_token()
@@ -42,7 +41,7 @@ function csrf_token(ctx::Context)::String
 end
 
 function csrf_request_token(ctx::Context)
-    header_token = HTTP.header(ctx.req, CSRF_HEADER_NAME, "")
+    header_token = get(ctx.req.headers, CSRF_HEADER_NAME, "")
     isempty(header_token) || return header_token
 
     query_token = get(reqquery(ctx), CSRF_PARAM_NAME, nothing)
@@ -64,14 +63,13 @@ The middleware stores the current token in `ctx.state[:csrf_token]`. Rendering t
 token into forms or requests is left to the application.
 """
 function csrf(; cookie_name::AbstractString = CSRF_COOKIE_NAME, httponly::Bool = false, secure::Bool = false, samesite = "Lax", path::AbstractString = "/")
-    resolved_cookie_name = String(cookie_name)
     resolved_samesite = resolve_samesite(samesite)
 
     return function (ctx::Context)
         token = csrf_token(ctx)
-        existing = cookie(ctx, resolved_cookie_name, nothing)
+        existing = cookie(ctx, cookie_name, nothing)
         if !(existing isa AbstractString) || isempty(existing)
-            setcookie(ctx, resolved_cookie_name, token; httponly = httponly, secure = secure, samesite = resolved_samesite, path = String(path))
+            setcookie(ctx, cookie_name, token; httponly = httponly, secure = secure, samesite = resolved_samesite, path = path)
         end
         set!(ctx, :csrf_token, token)
 
@@ -80,7 +78,7 @@ function csrf(; cookie_name::AbstractString = CSRF_COOKIE_NAME, httponly::Bool =
         end
 
         request_token = csrf_request_token(ctx)
-        if request_token isa AbstractString && constant_time_equals(String(request_token), token)
+        if request_token isa AbstractString && constant_time_equals(request_token, token)
             return next(ctx)
         end
 

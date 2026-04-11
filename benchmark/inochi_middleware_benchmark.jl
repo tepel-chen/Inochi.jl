@@ -1,6 +1,7 @@
 using BenchmarkTools
 using HTTP
 using Inochi
+using InochiCore
 
 const TEXT_RESPONSE = "Hello, World!"
 
@@ -50,7 +51,7 @@ const APPS = Dict(
 function run_dispatch(case_name::String)
     app = APPS[case_name]
     path = CASE_PATHS[case_name]
-    response = Inochi.dispatch(app, HTTP.Request("GET", path))
+    response = Inochi.dispatch(app, InochiCore.Request("GET", path))
     response.status == 200 || error("unexpected status $(response.status) for $case_name")
     return response
 end

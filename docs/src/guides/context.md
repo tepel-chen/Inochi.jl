@@ -10,7 +10,7 @@ CurrentModule = Inochi
 
 Common fields:
 
-- `ctx.req`: the underlying `HTTP.Request`
+- `ctx.req`: the underlying `Inochi.Request`
 - `ctx.params`: route parameters
 - `ctx.status`: response status
 - `ctx.headers`: response headers
@@ -68,21 +68,21 @@ context:
 
 ```julia
 get(app, "/raw") do ctx
-    response!(ctx, HTTP.Response(202, "raw"))
+    response!(ctx, Inochi.Response(202, "raw"))
 end
 ```
 
-For a full escape hatch, return `HTTP.Response(...)` directly:
+For a full escape hatch, return `Inochi.Response(...)` directly:
 
 ```julia
 get(app, "/raw") do ctx
-    HTTP.Response(202, "raw")
+    Inochi.Response(202, "raw")
 end
 ```
 
-When a handler returns `HTTP.Response`, Inochi sends it as-is. The usual `ctx`
-helpers and default headers are skipped. `response!(ctx, ...)` is the same idea
-when you want to set a raw response from inside the handler body.
+When a handler returns `Inochi.Response`, Inochi sends it as-is. The usual
+`ctx` helpers and default headers are skipped. `response!(ctx, ...)` is the same
+idea when you want to set a raw response from inside the handler body.
 
 ## Rendering
 

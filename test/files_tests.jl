@@ -25,32 +25,32 @@
             sendFile(ctx, "../secret.txt"; root = tmpdir)
         end
 
-        response1 = Inochi.dispatch(app, HTTP.Request("GET", "/assets/index.html"))
+        response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/assets/index.html"))
         @test response1.status == 200
         @test String(response1.body) == "<h1>Hello</h1>"
-        @test HTTP.header(response1, "Content-Type") == "text/html; charset=utf-8"
-        @test !isempty(HTTP.header(response1, "ETag"))
+        @test response1.headers["Content-Type"] == "text/html; charset=utf-8"
+        @test !isempty(response1.headers["ETag"])
 
-        response2 = Inochi.dispatch(app, HTTP.Request("GET", "/assets/app.css"))
+        response2 = Inochi.dispatch(app, InochiCore.Request("GET", "/assets/app.css"))
         @test response2.status == 200
         @test String(response2.body) == "body { color: red; }"
-        @test HTTP.header(response2, "Content-Type") == "text/css; charset=utf-8"
+        @test response2.headers["Content-Type"] == "text/css; charset=utf-8"
 
-        response3 = Inochi.dispatch(app, HTTP.Request("GET", "/assets/missing.txt"))
+        response3 = Inochi.dispatch(app, InochiCore.Request("GET", "/assets/missing.txt"))
         @test response3.status == 404
 
-        response4 = Inochi.dispatch(app, HTTP.Request("GET", "/escape"))
+        response4 = Inochi.dispatch(app, InochiCore.Request("GET", "/escape"))
         @test response4.status == 403
 
-        response5 = Inochi.dispatch(app, HTTP.Request("GET", "/assets-direct/index.html"))
+        response5 = Inochi.dispatch(app, InochiCore.Request("GET", "/assets-direct/index.html"))
         @test response5.status == 200
 
-        response6 = Inochi.dispatch(app, HTTP.Request("GET", "/assets-root/index.html"))
+        response6 = Inochi.dispatch(app, InochiCore.Request("GET", "/assets-root/index.html"))
         @test response6.status == 200
 
-        response7 = Inochi.dispatch(app, HTTP.Request("GET", "/assets/index.html", ["If-None-Match" => HTTP.header(response1, "ETag")]))
+        response7 = Inochi.dispatch(app, InochiCore.Request("GET", "/assets/index.html", ["If-None-Match" => response1.headers["ETag"]]))
         @test response7.status == 304
-        @test HTTP.header(response7, "ETag") == HTTP.header(response1, "ETag")
+        @test response7.headers["ETag"] == response1.headers["ETag"]
     end
 
     mktempdir(@__DIR__) do tmpdir
@@ -61,10 +61,10 @@
         app = App()
         get(static(assets_dir), app, "/assets/*")
 
-        response = Inochi.dispatch(app, HTTP.Request("GET", "/assets/app.css"))
+        response = Inochi.dispatch(app, InochiCore.Request("GET", "/assets/app.css"))
         @test response.status == 200
         @test String(response.body) == "body { color: blue; }"
-        @test HTTP.header(response, "Content-Type") == "text/css; charset=utf-8"
+        @test response.headers["Content-Type"] == "text/css; charset=utf-8"
     end
 
     @test Inochi.executable_root() == normpath(isempty(Base.PROGRAM_FILE) ? pwd() : dirname(abspath(Base.PROGRAM_FILE)))
@@ -92,17 +92,17 @@ end
         sendFile(ctx, "../outside.txt"; root = @__DIR__)
     end
 
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/download"))
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/download"))
     @test response1.status == 200
     @test String(response1.body) == "fixture"
-    @test HTTP.header(response1, "Content-Type") == "text/plain; charset=utf-8"
-    @test !isempty(HTTP.header(response1, "ETag"))
+    @test response1.headers["Content-Type"] == "text/plain; charset=utf-8"
+    @test !isempty(response1.headers["ETag"])
 
-    response2 = Inochi.dispatch(app, HTTP.Request("GET", "/blocked"))
+    response2 = Inochi.dispatch(app, InochiCore.Request("GET", "/blocked"))
     @test response2.status == 403
     @test String(response2.body) == "Forbidden"
 
-    response3 = Inochi.dispatch(app, HTTP.Request("GET", "/download", ["If-None-Match" => HTTP.header(response1, "ETag")]))
+    response3 = Inochi.dispatch(app, InochiCore.Request("GET", "/download", ["If-None-Match" => response1.headers["ETag"]]))
     @test response3.status == 304
-    @test HTTP.header(response3, "ETag") == HTTP.header(response1, "ETag")
+    @test response3.headers["ETag"] == response1.headers["ETag"]
 end

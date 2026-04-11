@@ -14,42 +14,42 @@
     @test app.routes[1].path == "/"
     @test app.routes[2].path == "/with-request"
 
-    root_response = Inochi.dispatch(app, HTTP.Request("GET", "/"))
+    root_response = Inochi.dispatch(app, InochiCore.Request("GET", "/"))
     @test root_response.status == 200
     @test String(root_response.body) == "hello"
-    @test HTTP.header(root_response, "Server") == EXPECTED_SERVER_HEADER
-    @test occursin(HTTP_DATE_PATTERN, HTTP.header(root_response, "Date"))
-    @test HTTP.header(root_response, "Vary") == "Origin"
+    @test root_response.headers["Server"] == EXPECTED_SERVER_HEADER
+    @test occursin(HTTP_DATE_PATTERN, root_response.headers["Date"])
+    @test root_response.headers["Vary"] == "Origin"
 
-    request_response = Inochi.dispatch(app, HTTP.Request("GET", "/with-request"))
+    request_response = Inochi.dispatch(app, InochiCore.Request("GET", "/with-request"))
     @test request_response.status == 200
     @test String(request_response.body) == "GET:/with-request"
 
-    query_response = Inochi.dispatch(app, HTTP.Request("GET", "/with-request?x=1&y=2"))
+    query_response = Inochi.dispatch(app, InochiCore.Request("GET", "/with-request?x=1&y=2"))
     @test query_response.status == 200
     @test String(query_response.body) == "GET:/with-request"
 
-    missing_response = Inochi.dispatch(app, HTTP.Request("GET", "/missing"))
+    missing_response = Inochi.dispatch(app, InochiCore.Request("GET", "/missing"))
     @test missing_response.status == 404
     @test String(missing_response.body) == "Not Found"
-    @test HTTP.header(missing_response, "Server") == EXPECTED_SERVER_HEADER
-    @test occursin(HTTP_DATE_PATTERN, HTTP.header(missing_response, "Date"))
-    @test HTTP.header(missing_response, "Vary") == "Origin"
+    @test missing_response.headers["Server"] == EXPECTED_SERVER_HEADER
+    @test occursin(HTTP_DATE_PATTERN, missing_response.headers["Date"])
+    @test missing_response.headers["Vary"] == "Origin"
 end
 
 @testset "Server Header" begin
     app = App()
 
     get(app, "/raw") do ctx
-        HTTP.Response(201, "created")
+        InochiCore.Response(201, "created")
     end
 
-    response = Inochi.dispatch(app, HTTP.Request("GET", "/raw"))
+    response = Inochi.dispatch(app, InochiCore.Request("GET", "/raw"))
     @test response.status == 201
     @test String(response.body) == "created"
-    @test HTTP.header(response, "Server", nothing) === nothing
-    @test HTTP.header(response, "Date", nothing) === nothing
-    @test HTTP.header(response, "Vary", nothing) === nothing
+    @test get(response.headers, "Server", nothing) === nothing
+    @test get(response.headers, "Date", nothing) === nothing
+    @test get(response.headers, "Vary", nothing) === nothing
 end
 
 @testset "AST Router" begin
@@ -70,24 +70,28 @@ end
     get(app, "/static/*") do params
         params["*"]
     end
-
-    response1 = Inochi.dispatch(app, HTTP.Request("GET", "/users/42"))
+    on_error(app) do ctx, err
+        bt = ctx.backtrace
+        stacktrace_text = bt === nothing ? sprint(showerror, err) : sprint(showerror, err, bt)
+        return text(ctx, stacktrace_text; status = 500)
+    end
+    response1 = Inochi.dispatch(app, InochiCore.Request("GET", "/users/42"))
     @test response1.status == 200
     @test String(response1.body) == "42"
 
-    response2 = Inochi.dispatch(app, HTTP.Request("GET", "/users/42/comments/7"))
+    response2 = Inochi.dispatch(app, InochiCore.Request("GET", "/users/42/comments/7"))
     @test response2.status == 200
     @test String(response2.body) == "42:7"
 
-    response3 = Inochi.dispatch(app, HTTP.Request("GET", "/users/me"))
+    response3 = Inochi.dispatch(app, InochiCore.Request("GET", "/users/me"))
     @test response3.status == 200
     @test String(response3.body) == "me"
 
-    response4 = Inochi.dispatch(app, HTTP.Request("GET", "/static/css/app.css"))
+    response4 = Inochi.dispatch(app, InochiCore.Request("GET", "/static/css/app.css"))
     @test response4.status == 200
     @test String(response4.body) == "css/app.css"
 
-    response4b = Inochi.dispatch(app, HTTP.Request("GET", "/static/"))
+    response4b = Inochi.dispatch(app, InochiCore.Request("GET", "/static/"))
     @test response4b.status == 200
     @test String(response4b.body) == ""
 
@@ -97,7 +101,7 @@ end
     @test Inochi.match_final_route(matcher, "/users/42").params["id"] == "42"
     @test Inochi.match_final_route(matcher, "/users/42/comments/7").params["comment_id"] == "7"
     @test Inochi.match_final_route(matcher, "/static/css/app.css").params["*"] == "css/app.css"
-    @test Inochi.dispatch(app, HTTP.Request("GET", "/users//oops")).status == 404
+    @test Inochi.dispatch(app, InochiCore.Request("GET", "/users//oops")).status == 404
 end
 
 @testset "Routing Internals" begin
@@ -122,11 +126,11 @@ end
         "pong"
     end
 
-    response = Inochi.dispatch(app, HTTP.Request("GET", "/mw"))
+    response = Inochi.dispatch(app, InochiCore.Request("GET", "/mw"))
     @test response.status == 200
     @test String(response.body) == "mw"
 
-    response2 = Inochi.dispatch(app, HTTP.Request("GET", "/api//oops"))
+    response2 = Inochi.dispatch(app, InochiCore.Request("GET", "/api//oops"))
     @test response2.status == 404
 end
 
@@ -181,19 +185,19 @@ end
         params["*"]
     end
 
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/user")).body) == "ok"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/user/comments")).body) == "ok"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/user/avatar")).body) == "ok"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/user/lookup/username/hey")).body) == "hey"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/user/lookup/email/a@b.com")).body) == "a@b.com"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/event/abcd1234")).body) == "abcd1234"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/event/abcd1234/comments")).body) == "abcd1234"
-    @test String(Inochi.dispatch(app, HTTP.Request("POST", "/event/abcd1234/comment")).body) == "abcd1234"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/map/tokyo/events")).body) == "tokyo"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/status")).body) == "ok"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/very/deeply/nested/route/hello/there")).body) == "ok"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/static/index.html")).body) == "index.html"
-    @test Inochi.dispatch(app, HTTP.Request("GET", "/event/abcd1234/comment")).status == 404
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/user")).body) == "ok"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/user/comments")).body) == "ok"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/user/avatar")).body) == "ok"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/user/lookup/username/hey")).body) == "hey"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/user/lookup/email/a@b.com")).body) == "a@b.com"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/event/abcd1234")).body) == "abcd1234"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/event/abcd1234/comments")).body) == "abcd1234"
+    @test String(Inochi.dispatch(app, InochiCore.Request("POST", "/event/abcd1234/comment")).body) == "abcd1234"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/map/tokyo/events")).body) == "tokyo"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/status")).body) == "ok"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/very/deeply/nested/route/hello/there")).body) == "ok"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/static/index.html")).body) == "index.html"
+    @test Inochi.dispatch(app, InochiCore.Request("GET", "/event/abcd1234/comment")).status == 404
 end
 
 @testset "HTTP Methods" begin
@@ -235,15 +239,15 @@ end
         "TRACE"
     end
 
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/resource")).body) == "GET"
-    @test String(Inochi.dispatch(app, HTTP.Request("POST", "/resource")).body) == "POST"
-    @test String(Inochi.dispatch(app, HTTP.Request("PUT", "/resource")).body) == "PUT"
-    @test String(Inochi.dispatch(app, HTTP.Request("PATCH", "/resource")).body) == "PATCH"
-    @test String(Inochi.dispatch(app, HTTP.Request("DELETE", "/resource")).body) == "DELETE"
-    @test String(Inochi.dispatch(app, HTTP.Request("OPTIONS", "/resource")).body) == "OPTIONS"
-    @test String(Inochi.dispatch(app, HTTP.Request("HEAD", "/resource")).body) == "HEAD"
-    @test String(Inochi.dispatch(app, HTTP.Request("CONNECT", "/resource")).body) == "CONNECT"
-    @test String(Inochi.dispatch(app, HTTP.Request("TRACE", "/resource")).body) == "TRACE"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/resource")).body) == "GET"
+    @test String(Inochi.dispatch(app, InochiCore.Request("POST", "/resource")).body) == "POST"
+    @test String(Inochi.dispatch(app, InochiCore.Request("PUT", "/resource")).body) == "PUT"
+    @test String(Inochi.dispatch(app, InochiCore.Request("PATCH", "/resource")).body) == "PATCH"
+    @test String(Inochi.dispatch(app, InochiCore.Request("DELETE", "/resource")).body) == "DELETE"
+    @test String(Inochi.dispatch(app, InochiCore.Request("OPTIONS", "/resource")).body) == "OPTIONS"
+    @test String(Inochi.dispatch(app, InochiCore.Request("HEAD", "/resource")).body) == "HEAD"
+    @test String(Inochi.dispatch(app, InochiCore.Request("CONNECT", "/resource")).body) == "CONNECT"
+    @test String(Inochi.dispatch(app, InochiCore.Request("TRACE", "/resource")).body) == "TRACE"
 end
 
 @testset "App-first Registration" begin
@@ -259,15 +263,15 @@ end
     connect(app, "/inline", _ -> "CONNECT")
     trace(app, "/inline", _ -> "TRACE")
 
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/inline")).body) == "GET"
-    @test String(Inochi.dispatch(app, HTTP.Request("POST", "/inline")).body) == "POST"
-    @test String(Inochi.dispatch(app, HTTP.Request("PUT", "/inline")).body) == "PUT"
-    @test String(Inochi.dispatch(app, HTTP.Request("PATCH", "/inline")).body) == "PATCH"
-    @test String(Inochi.dispatch(app, HTTP.Request("DELETE", "/inline")).body) == "DELETE"
-    @test String(Inochi.dispatch(app, HTTP.Request("OPTIONS", "/inline")).body) == "OPTIONS"
-    @test String(Inochi.dispatch(app, HTTP.Request("HEAD", "/inline")).body) == "HEAD"
-    @test String(Inochi.dispatch(app, HTTP.Request("CONNECT", "/inline")).body) == "CONNECT"
-    @test String(Inochi.dispatch(app, HTTP.Request("TRACE", "/inline")).body) == "TRACE"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/inline")).body) == "GET"
+    @test String(Inochi.dispatch(app, InochiCore.Request("POST", "/inline")).body) == "POST"
+    @test String(Inochi.dispatch(app, InochiCore.Request("PUT", "/inline")).body) == "PUT"
+    @test String(Inochi.dispatch(app, InochiCore.Request("PATCH", "/inline")).body) == "PATCH"
+    @test String(Inochi.dispatch(app, InochiCore.Request("DELETE", "/inline")).body) == "DELETE"
+    @test String(Inochi.dispatch(app, InochiCore.Request("OPTIONS", "/inline")).body) == "OPTIONS"
+    @test String(Inochi.dispatch(app, InochiCore.Request("HEAD", "/inline")).body) == "HEAD"
+    @test String(Inochi.dispatch(app, InochiCore.Request("CONNECT", "/inline")).body) == "CONNECT"
+    @test String(Inochi.dispatch(app, InochiCore.Request("TRACE", "/inline")).body) == "TRACE"
 end
 
 @testset "use Method" begin
@@ -277,15 +281,15 @@ end
         req.method
     end
 
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/shared")).body) == "GET"
-    @test String(Inochi.dispatch(app, HTTP.Request("POST", "/shared")).body) == "POST"
-    @test String(Inochi.dispatch(app, HTTP.Request("PUT", "/shared")).body) == "PUT"
-    @test String(Inochi.dispatch(app, HTTP.Request("PATCH", "/shared")).body) == "PATCH"
-    @test String(Inochi.dispatch(app, HTTP.Request("DELETE", "/shared")).body) == "DELETE"
-    @test String(Inochi.dispatch(app, HTTP.Request("OPTIONS", "/shared")).body) == "OPTIONS"
-    @test String(Inochi.dispatch(app, HTTP.Request("HEAD", "/shared")).body) == "HEAD"
-    @test String(Inochi.dispatch(app, HTTP.Request("CONNECT", "/shared")).body) == "CONNECT"
-    @test String(Inochi.dispatch(app, HTTP.Request("TRACE", "/shared")).body) == "TRACE"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/shared")).body) == "GET"
+    @test String(Inochi.dispatch(app, InochiCore.Request("POST", "/shared")).body) == "POST"
+    @test String(Inochi.dispatch(app, InochiCore.Request("PUT", "/shared")).body) == "PUT"
+    @test String(Inochi.dispatch(app, InochiCore.Request("PATCH", "/shared")).body) == "PATCH"
+    @test String(Inochi.dispatch(app, InochiCore.Request("DELETE", "/shared")).body) == "DELETE"
+    @test String(Inochi.dispatch(app, InochiCore.Request("OPTIONS", "/shared")).body) == "OPTIONS"
+    @test String(Inochi.dispatch(app, InochiCore.Request("HEAD", "/shared")).body) == "HEAD"
+    @test String(Inochi.dispatch(app, InochiCore.Request("CONNECT", "/shared")).body) == "CONNECT"
+    @test String(Inochi.dispatch(app, InochiCore.Request("TRACE", "/shared")).body) == "TRACE"
 end
 
 @testset "Optional Routes" begin
@@ -303,13 +307,13 @@ end
         "status"
     end
 
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/users")).body) == "index"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/users/42")).body) == "42"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/users")).body) == "index"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/users/42")).body) == "42"
 
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/files")).body) == "_/_"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/files/docs")).body) == "docs/_"
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/files/docs/readme")).body) == "docs/readme"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/files")).body) == "_/_"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/files/docs")).body) == "docs/_"
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/files/docs/readme")).body) == "docs/readme"
 
-    @test String(Inochi.dispatch(app, HTTP.Request("GET", "/status")).body) == "status"
-    @test Inochi.dispatch(app, HTTP.Request("GET", "/status/extra")).status == 404
+    @test String(Inochi.dispatch(app, InochiCore.Request("GET", "/status")).body) == "status"
+    @test Inochi.dispatch(app, InochiCore.Request("GET", "/status/extra")).status == 404
 end

@@ -8,7 +8,7 @@ function etag()
     return function (ctx::Context)
         next(ctx)
         getfield(ctx, :response) !== nothing && return ctx
-        existing = get(ctx.headers, ETAG_HEADER_NAME, "")
+        existing = ctx.headers === nothing ? "" : get(ctx.headers, ETAG_HEADER_NAME, "")
 
         if isempty(existing)
             body_bytes = response_bytes(ctx.body)
