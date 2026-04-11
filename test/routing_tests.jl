@@ -117,6 +117,12 @@ end
     api_child_2 = Inochi.get_or_create_middleware_child!(middleware_root, "api")
     @test api_child_1 === api_child_2
 
+    trie = Inochi.RouteTrieNode()
+    push!(trie.terminal_routes, Inochi.DynamicRoute(ctx -> Response(200, Headers()), "/done", String[], String[], false, Inochi.MiddlewareRoute[]))
+    push!(trie.wildcard_routes, Inochi.DynamicRoute(ctx -> Response(200, Headers()), "/wild/*", ["wild"], ["tail"], false, Inochi.MiddlewareRoute[]))
+    expr = Inochi.trie_match_expression(trie)
+    @test expr isa Expr
+
     app = App()
     Inochi.register_route!(app, "GET", "/mw", ctx -> "mw"; force_middleware = true)
     use(app, "/api") do ctx

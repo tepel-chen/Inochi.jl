@@ -558,7 +558,7 @@ function merge_vary(existing::AbstractString, value::AbstractString)::String
     return join(entries, ", ")
 end
 
-function apply_default_headers(ctx::Union{Nothing,Context} = nothing)::Context
+function apply_default_headers(ctx::Context)::Context
     header!(ctx, SERVER_HEADER_NAME, SERVER_HEADER_VALUE)
     header!(ctx, DATE_HEADER_NAME, http_date())
     existing_vary = get(ctx.headers, VARY_HEADER_NAME, "")

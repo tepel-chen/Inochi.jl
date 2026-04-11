@@ -639,16 +639,7 @@ function trie_match_expression(node::RouteTrieNode, capture_syms::Vector{Symbol}
     push!(ended_branch, :(nothing))
 
     body = trie_node_body_expression(node, capture_syms)
-    return Expr(
-        :block,
-        quote
-            if index > last
-                $(Expr(:block, ended_branch...))
-            else
-                $body
-            end
-        end,
-    )
+    return Expr(:if, :(index > last), Expr(:block, ended_branch...), body)
 end
 
 function trie_node_body_expression(node::RouteTrieNode, capture_syms::Vector{Symbol})

@@ -15,6 +15,11 @@ RuntimeGeneratedFunctions = "7e49a35a-f44a-4d26-94aa-eba1b4ca6b47"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 LlhttpWrapper = "8f726987-6585-45e4-bb83-75901d7f3707"
+NghttpWrapper = "61d8479c-89ed-4e4b-a666-29db64c3f521"
+
+[sources]
+LlhttpWrapper = { path = "../LlhttpWrapper" }
+NghttpWrapper = { path = "../NghttpWrapper" }
 
 [compat]
 HTTP = "1"

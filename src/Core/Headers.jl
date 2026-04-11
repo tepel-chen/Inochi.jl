@@ -165,24 +165,6 @@ function _normalize_headers(headers)
     return Headers([String(name) => String(value) for (name, value) in headers])
 end
 
-function _header_value(headers::Headers, name::AbstractString)
-    key = _header_lookup_key(headers, name)
-    key === nothing && return nothing
-    if headers.source === nothing
-        return headers.data[key].second
-    end
-    source = headers.source::String
-    _, _, value_start, value_stop = headers.ranges[key]
-    return SubString(source, value_start, value_stop)
-end
-
-function _header_value(headers::AbstractDict{<:AbstractString,<:AbstractString}, name::AbstractString)
-    for (header, value) in headers
-        _ascii_case_equal(header, name) && return value
-    end
-    return nothing
-end
-
 function _is_tchar_byte(byte::UInt8)
     return (0x30 <= byte <= 0x39) ||
            (0x41 <= byte <= 0x5a) ||

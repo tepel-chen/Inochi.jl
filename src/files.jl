@@ -39,6 +39,10 @@ function etag_for_bytes(bytes::Vector{UInt8})::String
     return "\"" * bytes2hex(sha1(bytes)) * "\""
 end
 
+response_bytes(body::AbstractVector{UInt8}) = body
+response_bytes(body::AbstractString) = Vector{UInt8}(codeunits(body))
+response_bytes(body) = throw(ArgumentError("Unsupported response body type: $(typeof(body))"))
+
 function etag_for_file(path::AbstractString)::String
     info = stat(path)
     size_hex = string(info.size; base = 16)
@@ -46,11 +50,6 @@ function etag_for_file(path::AbstractString)::String
     mtime_hex = string(mtime_ns; base = 16)
     return "\"" * size_hex * "-" * mtime_hex * "\""
 end
-
-response_bytes(body::Vector{UInt8}) = body
-response_bytes(body::AbstractVector{UInt8}) = Vector{UInt8}(body)
-response_bytes(body::AbstractString) = Vector{UInt8}(codeunits(body))
-response_bytes(body) = throw(ArgumentError("Unsupported response body type: $(typeof(body))"))
 
 function if_none_match_matches(req::Request, etag::AbstractString)::Bool
     header = strip(get(req.headers, IF_NONE_MATCH_HEADER_NAME, ""))

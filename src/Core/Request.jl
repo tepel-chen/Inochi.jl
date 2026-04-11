@@ -24,13 +24,13 @@ Minimal HTTP request representation.
 struct Request
     method::Union{String,SubString{String}}
     target::Union{String,SubString{String}}
-    version::VersionNumber
+    version::Union{VersionNumber,Int}
     headers::Headers
     body::Union{Vector{UInt8},LazyBody}
 
     function Request(method::String,
                      target::String,
-                     version::VersionNumber,
+                     version::Union{VersionNumber,Int},
                      headers::Headers,
                      body::Union{Vector{UInt8},LazyBody}=UInt8[])
         return new(method, target, version, headers, body)
@@ -38,7 +38,7 @@ struct Request
 
     function Request(method::SubString{String},
                      target::SubString{String},
-                     version::VersionNumber,
+                     version::Union{VersionNumber,Int},
                      headers::Headers,
                      body::Union{Vector{UInt8},LazyBody}=UInt8[])
         return new(method, target, version, headers, body)
@@ -67,14 +67,14 @@ Request(method::AbstractString,
 
 Request(method::AbstractString,
         target::AbstractString,
-        version::VersionNumber,
+        version::Union{VersionNumber,Int},
         headers::Union{AbstractDict{<:AbstractString,<:AbstractString},AbstractVector{<:Pair{<:AbstractString,<:AbstractString}}},
         body::AbstractString) =
     Request(method, target, version, _normalize_headers(headers), Vector{UInt8}(codeunits(body)))
 
 Request(method::AbstractString,
         target::AbstractString,
-        version::VersionNumber,
+        version::Union{VersionNumber,Int},
         headers::Union{AbstractDict{<:AbstractString,<:AbstractString},AbstractVector{<:Pair{<:AbstractString,<:AbstractString}}},
         body::AbstractVector{UInt8}) =
     Request(method, target, version, _normalize_headers(headers), body isa Vector{UInt8} ? body : collect(body))
@@ -403,10 +403,20 @@ function _parser_settings()
 end
 
 function _read_chunk(sock::Sockets.TCPSocket)
-    chunk = readavailable(sock)
+    chunk = try
+        readavailable(sock)
+    catch err
+        err isa EOFError ? UInt8[] : rethrow(err)
+    end
     isempty(chunk) || return chunk
     isopen(sock) || return UInt8[]
-    return UInt8[read(sock, UInt8)]
+    byte = try
+        read(sock, UInt8)
+    catch err
+        err isa EOFError && return UInt8[]
+        rethrow(err)
+    end
+    return UInt8[byte]
 end
 
 function _next_completed_request(state::_RequestState)
@@ -414,17 +424,12 @@ function _next_completed_request(state::_RequestState)
     return popfirst!(state.completed)
 end
 
-function _next_request!(sock::Sockets.TCPSocket, parser::LlhttpWrapper.Parser, state_ref::Base.RefValue{_RequestState})
+function _next_request!(sock::Sockets.TCPSocket, parser::LlhttpWrapper.Parser, state_ref::Base.RefValue{_RequestState}, prefetched = nothing)
     while true
         request = _next_completed_request(state_ref[])
         request !== nothing && return request
 
-        chunk = try
-            _read_chunk(sock)
-        catch err
-            err isa EOFError || rethrow(err)
-            return nothing
-        end
+        chunk = prefetched === nothing ? _read_chunk(sock) : _read_chunk(sock, prefetched)
         isempty(chunk) && return nothing
         code = LlhttpWrapper.execute!(parser, chunk)
         code == LlhttpWrapper.HPE_OK || code == LlhttpWrapper.HPE_PAUSED || code == LlhttpWrapper.HPE_PAUSED_UPGRADE || throw(_parse_error(parser, code))

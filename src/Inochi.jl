@@ -14,7 +14,21 @@ using RuntimeGeneratedFunctions
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
-include("Core.jl")
+module Core
+
+using Sockets
+using LlhttpWrapper
+using NghttpWrapper
+
+include("Core/Headers.jl")
+include("Core/Request.jl")
+include("Core/Response.jl")
+include("Core/HTTP2.jl")
+
+export Request, Response, Headers, PayloadTooLargeError, bodybytes, bodylength, bodytext, getheaders, appendheader!, serve
+export LlhttpWrapper, LazyBody, _RequestState, _parser_settings, _next_completed_request, _header_value_range, _content_length, _read_chunk, _normalize_host, _default_error_response, _ascii_case_equal, _write_response
+
+end
 
 using .Core: Request, Response, Headers, PayloadTooLargeError, bodybytes, bodylength, bodytext, getheaders, appendheader!, serve
 
@@ -30,7 +44,19 @@ include("types.jl")
 include("context.jl")
 include("files.jl")
 include("routing.jl")
-include("middleware/middleware.jl")
-include("server.jl")
+include("middleware/cors.jl")
+include("middleware/csrf.jl")
+include("middleware/etag.jl")
+include("middleware/logger.jl")
+include("middleware/basic_auth.jl")
+
+"""
+    start(app; host = "127.0.0.1", port = 8080, kw...)
+
+Start an HTTP server for `app`.
+"""
+function start(app::App; host::AbstractString = "127.0.0.1", port::Integer = 8080, max_content_size::Integer = app_config_int(app, "max_content_size", DEFAULT_MAX_CONTENT_SIZE), kw...)
+    return serve(req -> dispatch(app, req), host = host, port = port, max_content_size = max_content_size; kw...)
+end
 
 end
