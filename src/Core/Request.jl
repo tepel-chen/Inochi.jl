@@ -24,57 +24,60 @@ Minimal HTTP request representation.
 struct Request
     method::Union{String,SubString{String}}
     target::Union{String,SubString{String}}
-    version::Union{VersionNumber,Int}
+    version::Int
     headers::Headers
     body::Union{Vector{UInt8},LazyBody}
 
     function Request(method::String,
                      target::String,
-                     version::Union{VersionNumber,Int},
+                     version::Union{Integer,VersionNumber},
                      headers::Headers,
                      body::Union{Vector{UInt8},LazyBody}=UInt8[])
-        return new(method, target, version, headers, body)
+        return new(method, target, _request_version(version), headers, body)
     end
 
     function Request(method::SubString{String},
                      target::SubString{String},
-                     version::Union{VersionNumber,Int},
+                     version::Union{Integer,VersionNumber},
                      headers::Headers,
                      body::Union{Vector{UInt8},LazyBody}=UInt8[])
-        return new(method, target, version, headers, body)
+        return new(method, target, _request_version(version), headers, body)
     end
 end
 
+
+_request_version(version::Integer) = Int(version)
+_request_version(version::VersionNumber) = Int(version.major)
 Request(method::AbstractString, target::AbstractString) =
-    Request(method, target, v"1.1", Headers(), UInt8[])
+    Request(method, target, 1, Headers(), UInt8[])
 
 Request(method::AbstractString,
         target::AbstractString,
         headers::Union{AbstractDict{<:AbstractString,<:AbstractString},AbstractVector{<:Pair{<:AbstractString,<:AbstractString}}},
         body::AbstractString) =
-    Request(method, target, v"1.1", _normalize_headers(headers), Vector{UInt8}(codeunits(body)))
+    Request(method, target, 1, _normalize_headers(headers), Vector{UInt8}(codeunits(body)))
 
 Request(method::AbstractString,
         target::AbstractString,
         headers::Union{AbstractDict{<:AbstractString,<:AbstractString},AbstractVector{<:Pair{<:AbstractString,<:AbstractString}}}) =
-    Request(method, target, v"1.1", _normalize_headers(headers), UInt8[])
+    Request(method, target, 1, _normalize_headers(headers), UInt8[])
 
 Request(method::AbstractString,
         target::AbstractString,
         headers::Union{AbstractDict{<:AbstractString,<:AbstractString},AbstractVector{<:Pair{<:AbstractString,<:AbstractString}}},
         body::AbstractVector{UInt8}) =
-    Request(method, target, v"1.1", _normalize_headers(headers), body isa Vector{UInt8} ? body : collect(body))
+    Request(method, target, 1, _normalize_headers(headers), body isa Vector{UInt8} ? body : collect(body))
 
 Request(method::AbstractString,
         target::AbstractString,
-        version::Union{VersionNumber,Int},
+        version::Union{Integer,VersionNumber},
         headers::Union{AbstractDict{<:AbstractString,<:AbstractString},AbstractVector{<:Pair{<:AbstractString,<:AbstractString}}},
         body::AbstractString) =
     Request(method, target, version, _normalize_headers(headers), Vector{UInt8}(codeunits(body)))
 
 Request(method::AbstractString,
         target::AbstractString,
-        version::Union{VersionNumber,Int},
+        version::Union{Integer,VersionNumber},
         headers::Union{AbstractDict{<:AbstractString,<:AbstractString},AbstractVector{<:Pair{<:AbstractString,<:AbstractString}}},
         body::AbstractVector{UInt8}) =
     Request(method, target, version, _normalize_headers(headers), body isa Vector{UInt8} ? body : collect(body))
@@ -358,7 +361,7 @@ function _on_message_complete(parser::Ptr{LlhttpWrapper.llhttp_t})
     push!(state.completed, _QueuedRequest(Request(
         method,
         target,
-        VersionNumber(state.http_major, state.http_minor),
+        state.http_major,
         headers,
         body,
     ), LlhttpWrapper.should_keep_alive(parser)))
@@ -402,21 +405,39 @@ function _parser_settings()
     )
 end
 
-function _read_chunk(sock::Sockets.TCPSocket)
-    chunk = try
-        readavailable(sock)
-    catch err
-        err isa EOFError ? UInt8[] : rethrow(err)
+function _read_chunk(io::OpenSSL.SSLStream)
+    while true
+        chunk = try
+            readavailable(io)
+        catch err
+            err isa EOFError ? UInt8[] : rethrow(err)
+        end
+        isempty(chunk) || return chunk
+        isopen(io) || return UInt8[]
+        eof(io) && return UInt8[]
+        yield()
     end
-    isempty(chunk) || return chunk
-    isopen(sock) || return UInt8[]
-    byte = try
-        read(sock, UInt8)
-    catch err
-        err isa EOFError && return UInt8[]
-        rethrow(err)
+end
+
+function _read_chunk(io::IO)
+    while true
+        chunk = try
+            readavailable(io)
+        catch err
+            err isa EOFError ? UInt8[] : rethrow(err)
+        end
+        isempty(chunk) || return chunk
+        isopen(io) || return UInt8[]
+        buf = Vector{UInt8}(undef, 1)
+        n = try
+            readbytes!(io, buf, 1)
+        catch err
+            err isa EOFError ? 0 : rethrow(err)
+        end
+        n > 0 && return resize!(buf, n)
+        eof(io) && return UInt8[]
+        yield()
     end
-    return UInt8[byte]
 end
 
 function _next_completed_request(state::_RequestState)
@@ -424,12 +445,12 @@ function _next_completed_request(state::_RequestState)
     return popfirst!(state.completed)
 end
 
-function _next_request!(sock::Sockets.TCPSocket, parser::LlhttpWrapper.Parser, state_ref::Base.RefValue{_RequestState}, prefetched = nothing)
+function _next_request!(io::IO, parser::LlhttpWrapper.Parser, state_ref::Base.RefValue{_RequestState}, prefetched = nothing)
     while true
         request = _next_completed_request(state_ref[])
         request !== nothing && return request
 
-        chunk = prefetched === nothing ? _read_chunk(sock) : _read_chunk(sock, prefetched)
+        chunk = prefetched === nothing ? _read_chunk(io) : _read_chunk(io, prefetched)
         isempty(chunk) && return nothing
         code = LlhttpWrapper.execute!(parser, chunk)
         code == LlhttpWrapper.HPE_OK || code == LlhttpWrapper.HPE_PAUSED || code == LlhttpWrapper.HPE_PAUSED_UPGRADE || throw(_parse_error(parser, code))
@@ -437,12 +458,12 @@ function _next_request!(sock::Sockets.TCPSocket, parser::LlhttpWrapper.Parser, s
     end
 end
 
-function _read_request(sock::Sockets.TCPSocket; max_content_size::Integer = typemax(Int))
+function _read_request(io::IO; max_content_size::Integer = typemax(Int))
     state_ref = Ref(_RequestState(max_content_size))
     parser = LlhttpWrapper.Parser(LlhttpWrapper.HTTP_REQUEST; settings=_parser_settings())
     LlhttpWrapper.set_userdata!(parser, Base.pointer_from_objref(state_ref))
     GC.@preserve state_ref parser begin
-        request = _next_request!(sock, parser, state_ref)
+        request = _next_request!(io, parser, state_ref)
         request === nothing && throw(EOFError("incomplete HTTP request"))
         return request.request
     end

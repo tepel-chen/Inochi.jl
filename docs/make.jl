@@ -11,6 +11,7 @@ makedocs(;
             "Routing and Middleware" => "guides/routing.md",
             "Context and Responses" => "guides/context.md",
             "Static Files" => "guides/static-files.md",
+            "TLS with OpenSSL" => "guides/tls.md",
         ],
         "Examples" => [
             "Todo App" => "examples/todo.md",

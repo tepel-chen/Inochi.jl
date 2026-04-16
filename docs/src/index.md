@@ -30,11 +30,13 @@ start(app)
 - Routes are registered with `get`, `post`, `put`, `patch`, `delete`, `options`, `head`, `connect`, and `trace`.
 - `use` registers middleware globally or on a path prefix.
 - Handlers usually receive a [`Context`](@ref).
-- Route matching uses a static map for exact routes and a compiled regex matcher for dynamic routes.
+- Route matching uses a static map for exact routes and a compiled trie matcher for dynamic routes.
+- TLS is served through `OpenSSL.SSLContext` with ALPN-based HTTP/2 negotiation.
 
 ## Next Pages
 
 - [Routing and Middleware](guides/routing.md)
 - [Context and Responses](guides/context.md)
 - [Static Files](guides/static-files.md)
+- [TLS with OpenSSL](guides/tls.md)
 - [Todo App Example](examples/todo.md)

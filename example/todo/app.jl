@@ -1,13 +1,9 @@
 import Pkg
 
 Pkg.activate(@__DIR__; io = devnull)
-Pkg.add([
-    Pkg.PackageSpec(url = "https://github.com/tepel-chen/Inochi.jl"),
-    Pkg.PackageSpec(url = "https://github.com/tepel-chen/IwaiEngine.jl"),
-]; io = devnull)
+Pkg.develop(path = joinpath(@__DIR__, "..", ".."); io = devnull)
 Pkg.instantiate(; io = devnull)
 
-using HTTP
 using Inochi
 using IwaiEngine
 
@@ -38,4 +34,4 @@ end
 
 println("Todo app listening on http://127.0.0.1:8080")
 
-wait(start(app; host = "127.0.0.1", port = 8080))
+start(app; host = "127.0.0.1", port = 8080)

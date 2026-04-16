@@ -119,10 +119,10 @@ end
         @test sprint(showerror, InochiCore.PayloadTooLargeError()) == "HTTP request body exceeds max_content_size"
 
         headers = InochiCore.Headers(["X-Test" => "1"])
-        req1 = InochiCore.Request(SubString("GET", 1, 3), SubString("/sub", 1, 4), v"1.1", headers, empty_lazy)
+        req1 = InochiCore.Request(SubString("GET", 1, 3), SubString("/sub", 1, 4), 1, headers, empty_lazy)
         @test req1.method == "GET"
         @test req1.target == "/sub"
-        @test req1.version == v"1.1"
+        @test req1.version == 1
         @test req1.headers["x-test"] == "1"
         @test req1.body === empty_lazy
 
@@ -134,28 +134,28 @@ end
         @test req3.headers["b"] == "2"
         @test String(InochiCore.bodytext(req3)) == "ab"
 
-        req4 = InochiCore.Request(SubString("POST", 1, 4), SubString("/ver", 1, 4), v"2.0", Dict("C" => "3"), "xyz")
-        @test req4.version == v"2.0"
+        req4 = InochiCore.Request(SubString("POST", 1, 4), SubString("/ver", 1, 4), 2, Dict("C" => "3"), "xyz")
+        @test req4.version == 2
         @test req4.headers["c"] == "3"
 
-        req5 = InochiCore.Request(SubString("POST", 1, 4), SubString("/ver", 1, 4), v"2.0", Dict("D" => "4"), UInt8[0x78, 0x79])
+        req5 = InochiCore.Request(SubString("POST", 1, 4), SubString("/ver", 1, 4), 2, Dict("D" => "4"), UInt8[0x78, 0x79])
         @test req5.headers["d"] == "4"
         @test req5.body == UInt8[0x78, 0x79]
 
         req6 = InochiCore.Request("GET", "/default")
-        @test req6.version == v"1.1"
-        req7 = InochiCore.Request("GET", "/headers", v"1.1", InochiCore.Headers(["E" => "5"]), empty_lazy)
+        @test req6.version == 1
+        req7 = InochiCore.Request("GET", "/headers", 1, InochiCore.Headers(["E" => "5"]), empty_lazy)
         @test req7.method == "GET"
         @test req7.target == "/headers"
         @test req7.headers["e"] == "5"
         @test req7.body === empty_lazy
-        @test InochiCore.Request("GET", "/default").version == v"1.1"
+        @test InochiCore.Request("GET", "/default").version == 1
         @test InochiCore.Request("GET", "/default", InochiCore.Headers()).body == UInt8[]
         @test InochiCore.Request("GET", "/default", Dict("F" => "6")).headers["f"] == "6"
         @test InochiCore.Request("GET", "/default", ["G" => "7"]).headers["g"] == "7"
         @test InochiCore.Request("GET", "/default", ["J" => "10"], "abc").body == Vector{UInt8}(codeunits("abc"))
-        @test InochiCore.Request("GET", "/default", v"1.0", Dict("H" => "8"), UInt8[0x39]).version == v"1.0"
-        @test InochiCore.Request("GET", "/default", v"1.0", ["I" => "9"], "xyz").headers["i"] == "9"
+        @test InochiCore.Request("GET", "/default", 1, Dict("H" => "8"), UInt8[0x39]).version == 1
+        @test InochiCore.Request("GET", "/default", 1, ["I" => "9"], "xyz").headers["i"] == "9"
 
         bytes_upper = Vector{UInt8}(codeunits("Foo"))
         bytes_lower = Vector{UInt8}(codeunits("foo"))
@@ -208,7 +208,7 @@ end
             request = InochiCore._read_request(sock)
             @test request.method == "POST"
             @test request.target == "/read"
-            @test request.version == v"1.1"
+            @test request.version == 1
             @test request.headers["host"] == "example.com"
             @test String(InochiCore.bodytext(request)) == "hello"
             close(client)

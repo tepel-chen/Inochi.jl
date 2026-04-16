@@ -9,6 +9,7 @@ Key files:
 - `app.jl`: application routes and server startup
 - `store.jl`: in-memory todo store
 - `views.jl`: HTML rendering helpers
+- `README.md`: run instructions
 - `public/app.css`: static stylesheet
 - `public/about.html`: fixed file served with `sendFile`
 
@@ -32,3 +33,4 @@ julia app.jl
 ```
 
 Open `http://127.0.0.1:8080`.
+The app runs in the foreground and stops when you interrupt it.

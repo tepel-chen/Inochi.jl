@@ -8,6 +8,7 @@ julia app.jl
 ```
 
 Open `http://127.0.0.1:8080`.
+The process runs in the foreground until you stop it.
 
 Routes:
 

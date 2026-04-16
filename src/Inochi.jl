@@ -11,6 +11,7 @@ using Dates
 using Printf
 using Random
 using RuntimeGeneratedFunctions
+using OpenSSL
 
 RuntimeGeneratedFunctions.init(@__MODULE__)
 
@@ -19,6 +20,7 @@ module Core
 using Sockets
 using LlhttpWrapper
 using NghttpWrapper
+using OpenSSL
 
 include("Core/Headers.jl")
 include("Core/Request.jl")
@@ -54,6 +56,9 @@ include("middleware/basic_auth.jl")
     start(app; host = "127.0.0.1", port = 8080, kw...)
 
 Start an HTTP server for `app`.
+
+All keyword arguments are forwarded to [`serve`](@ref), including TLS
+configuration via an `OpenSSL.SSLContext` loaded with a server certificate and key.
 """
 function start(app::App; host::AbstractString = "127.0.0.1", port::Integer = 8080, max_content_size::Integer = app_config_int(app, "max_content_size", DEFAULT_MAX_CONTENT_SIZE), kw...)
     return serve(req -> dispatch(app, req), host = host, port = port, max_content_size = max_content_size; kw...)

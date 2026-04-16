@@ -2,6 +2,7 @@
 Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 Inochi = "9a13a925-b8a3-4980-966f-8cdb6f2f6ab3"
+OpenSSL = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
 
 [compat]
 Documenter = "1"

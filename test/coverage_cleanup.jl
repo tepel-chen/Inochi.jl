@@ -57,6 +57,7 @@ end)
     end
 
     InochiCore.eval(quote
+        using Sockets
         function _feed_h2!(session, sock::Sockets.TCPSocket, chunk::AbstractVector{UInt8})
             throw(ErrorException("forced h2 feed failure"))
         end
@@ -87,15 +88,20 @@ end)
     @test collect(Inochi.START_STUB[].kw) == [:allow_http1 => false, :allow_http2 => true]
 
     CoverageRequest = Module(:CoverageRequest)
-    Core.eval(CoverageRequest, :(using Sockets, LlhttpWrapper))
-    Core.eval(CoverageRequest, :(import Base: readavailable, read))
+    Core.eval(CoverageRequest, :(using Sockets, LlhttpWrapper, OpenSSL))
+    Core.eval(CoverageRequest, :(import Base: readavailable, readbytes!))
     Base.include(CoverageRequest, joinpath(@__DIR__, "..", "src", "Core", "Headers.jl"))
     Base.include(CoverageRequest, joinpath(@__DIR__, "..", "src", "Core", "Request.jl"))
     Core.eval(CoverageRequest, quote
         const COVERAGE_READ_MODE = Ref(:byte)
         const COVERAGE_READ_BYTE = Ref{UInt8}(0x61)
         readavailable(::Sockets.TCPSocket) = UInt8[]
-        read(::Sockets.TCPSocket, ::Type{UInt8}) = COVERAGE_READ_MODE[] === :byte ? COVERAGE_READ_BYTE[] : throw(ErrorException("forced read failure"))
+        readbytes!(::Sockets.TCPSocket, buf::Vector{UInt8}, ::Int64; all::Bool = true) = begin
+            COVERAGE_READ_MODE[] === :byte || throw(ErrorException("forced read failure"))
+            isempty(buf) && return 0
+            buf[1] = COVERAGE_READ_BYTE[]
+            return 1
+        end
     end)
     with_tcp_pair() do sock, client, server
         CoverageRequest.COVERAGE_READ_MODE[] = :byte

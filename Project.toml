@@ -16,6 +16,7 @@ SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 LlhttpWrapper = "8f726987-6585-45e4-bb83-75901d7f3707"
 NghttpWrapper = "61d8479c-89ed-4e4b-a666-29db64c3f521"
+OpenSSL = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
 
 [sources]
 LlhttpWrapper = { path = "../LlhttpWrapper" }
@@ -29,7 +30,8 @@ RuntimeGeneratedFunctions = "0.5.17"
 julia = "1.10.10"
 
 [extras]
+OpenSSL = "4d8831e6-92b7-49fb-bdf8-b643e874388c"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test"]
+test = ["Test", "OpenSSL"]

@@ -5,20 +5,20 @@ end
 
 _PrefetchedBytes(bytes::AbstractVector{UInt8}) = _PrefetchedBytes(bytes isa Vector{UInt8} ? bytes : collect(bytes), 1)
 
-function _read_chunk(sock::Sockets.TCPSocket, prefetched::_PrefetchedBytes)
-    prefetched.index <= length(prefetched.bytes) || return _read_chunk(sock)
+function _read_chunk(io::IO, prefetched::_PrefetchedBytes)
+    prefetched.index <= length(prefetched.bytes) || return _read_chunk(io)
     chunk = copy(@view prefetched.bytes[prefetched.index:end])
     prefetched.index = length(prefetched.bytes) + 1
     return chunk
 end
 
-function _sniff_protocol(sock::Sockets.TCPSocket; allow_http1::Bool = true, allow_http2::Bool = true)
+function _sniff_protocol(io::IO; allow_http1::Bool = true, allow_http2::Bool = true)
     allow_http1 || allow_http2 || throw(ArgumentError("allow_http1 and allow_http2 cannot both be false"))
     allow_http1 && !allow_http2 && return (:http1, _PrefetchedBytes(UInt8[]))
     expected = codeunits(NghttpWrapper.NGHTTP2_CLIENT_MAGIC)
     prefetched = UInt8[]
     while length(prefetched) < length(expected)
-        chunk = _read_chunk(sock)
+        chunk = _read_chunk(io)
         isempty(chunk) && return nothing
         append!(prefetched, chunk)
         matched = min(length(prefetched), length(expected))
@@ -262,21 +262,21 @@ function _install_h2_callbacks!(callbacks)
     return callbacks
 end
 
-function _drive_h2_connection!(session, sock::Sockets.TCPSocket, prefix::Union{Nothing,_PrefetchedBytes,AbstractVector{UInt8}})
+function _drive_h2_connection!(session, io::IO, prefix::Union{Nothing,_PrefetchedBytes,AbstractVector{UInt8}})
     if prefix !== nothing
         initial = prefix isa _PrefetchedBytes ? prefix.bytes[prefix.index:end] : prefix
-        isempty(initial) || _feed_h2!(session, sock, initial)
+        isempty(initial) || _feed_h2!(session, io, initial)
     end
-    while isopen(sock)
-        chunk = _read_chunk(sock)
+    while isopen(io)
+        chunk = _read_chunk(io)
         isempty(chunk) && break
-        _feed_h2!(session, sock, chunk)
+        _feed_h2!(session, io, chunk)
     end
-    _flush_h2!(session, sock)
+    _flush_h2!(session, io)
     return nothing
 end
 
-function _handle_http2_connection(sock::Sockets.TCPSocket, handler; max_content_size::Integer = typemax(Int), prefix::Union{Nothing,_PrefetchedBytes,AbstractVector{UInt8}} = nothing)
+function _handle_http2_connection(io::IO, handler; max_content_size::Integer = typemax(Int), prefix::Union{Nothing,_PrefetchedBytes,AbstractVector{UInt8}} = nothing)
     state_ref = Ref(_H2ConnState(handler, Int(max_content_size), Dict{Int32,_H2StreamState}()))
     callbacks = NghttpWrapper.callbacks_new()
     session = nothing
@@ -284,30 +284,30 @@ function _handle_http2_connection(sock::Sockets.TCPSocket, handler; max_content_
     try
         _install_h2_callbacks!(callbacks)
         session = NghttpWrapper.Session(:server; callbacks=callbacks, user_data=Base.pointer_from_objref(state_ref))
-        GC.@preserve state_ref callbacks session _drive_h2_connection!(session, sock, prefix)
+        GC.@preserve state_ref callbacks session _drive_h2_connection!(session, io, prefix)
     catch e
         err = e
     finally
         session !== nothing && NghttpWrapper.session_del!(session)
         NghttpWrapper.callbacks_del!(callbacks)
-        close(sock)
+        close(io)
     end
     err === nothing || throw(err)
     return nothing
 end
 
-function _feed_h2!(session, sock::Sockets.TCPSocket, chunk::AbstractVector{UInt8})
+function _feed_h2!(session, io::IO, chunk::AbstractVector{UInt8})
     code = NghttpWrapper.session_mem_recv2(session, chunk)
     code >= 0 || throw(ErrorException("HTTP/2 parse error ($(NghttpWrapper.error_name(code)))"))
-    _flush_h2!(session, sock)
+    _flush_h2!(session, io)
     return nothing
 end
 
-function _flush_h2!(session, sock::Sockets.TCPSocket)
+function _flush_h2!(session, io::IO)
     while true
         bytes = NghttpWrapper.session_mem_send_bytes(session)
         isempty(bytes) && return nothing
-        write(sock, bytes)
-        flush(sock)
+        write(io, bytes)
+        flush(io)
     end
 end

@@ -68,21 +68,21 @@ context:
 
 ```julia
 get(app, "/raw") do ctx
-    response!(ctx, Inochi.Response(202, "raw"))
+    response!(ctx, Response(202, "raw"))
 end
 ```
 
-For a full escape hatch, return `Inochi.Response(...)` directly:
+For a full escape hatch, return `Response(...)` directly:
 
 ```julia
 get(app, "/raw") do ctx
-    Inochi.Response(202, "raw")
+    Response(202, "raw")
 end
 ```
 
-When a handler returns `Inochi.Response`, Inochi sends it as-is. The usual
-`ctx` helpers and default headers are skipped. `response!(ctx, ...)` is the same
-idea when you want to set a raw response from inside the handler body.
+When a handler returns `Response`, Inochi sends it as-is. The usual `ctx`
+helpers and default headers are skipped. `response!(ctx, ...)` is the same idea
+when you want to set a raw response from inside the handler body.
 
 ## Rendering
 
