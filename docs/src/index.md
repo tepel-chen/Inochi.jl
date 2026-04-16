@@ -32,6 +32,7 @@ start(app)
 - Handlers usually receive a [`Context`](@ref).
 - Route matching uses a static map for exact routes and a compiled trie matcher for dynamic routes.
 - TLS is served through `OpenSSL.SSLContext` with ALPN-based HTTP/2 negotiation.
+- Connection handlers are spawned on Julia threads, with `max_threads` capping concurrent work.
 
 ## Next Pages
 

@@ -91,3 +91,4 @@ on_notfound
 
 TLS uses `OpenSSL`. Create an `OpenSSL.SSLContext` with a server certificate
 and private key, then pass it as `sslconfig` to `serve` or `start`.
+Use `max_threads` to cap how many connection handlers may run at once.

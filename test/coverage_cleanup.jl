@@ -85,7 +85,7 @@ end)
     @test Inochi.START_STUB[].host == "127.0.0.1"
     @test Inochi.START_STUB[].port == 4321
     @test Inochi.START_STUB[].max_content_size == Inochi.DEFAULT_MAX_CONTENT_SIZE
-    @test collect(Inochi.START_STUB[].kw) == [:allow_http1 => false, :allow_http2 => true]
+    @test collect(Inochi.START_STUB[].kw) == [:max_threads => Threads.nthreads(), :allow_http1 => false, :allow_http2 => true]
 
     CoverageRequest = Module(:CoverageRequest)
     Core.eval(CoverageRequest, :(using Sockets, LlhttpWrapper, OpenSSL))

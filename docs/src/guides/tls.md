@@ -31,6 +31,9 @@ end
 start(app; host = "0.0.0.0", port = 8443, sslconfig = ssl)
 ```
 
+If you want to limit how many requests are handled in parallel, pass
+`max_threads = N` to `serve` or `start`.
+
 ## ALPN Behavior
 
 When TLS is enabled, Inochi advertises ALPN based on the route flags:

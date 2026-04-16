@@ -67,6 +67,54 @@ end
     @test calls3[] == 0
 end
 
+@testset "Threaded" begin
+    function request_once(port)
+        client = Sockets.connect(Sockets.IPv4(127, 0, 0, 1), port)
+        try
+            write(client, "GET / HTTP/1.1\r\nHost: 127.0.0.1:$port\r\nConnection: close\r\n\r\n")
+            flush(client)
+            return String(read(client))
+        finally
+            close(client)
+        end
+    end
+
+    function run_threaded_server(max_threads)
+        listener = Sockets.listen(Sockets.IPv4(127, 0, 0, 1), 0)
+        _, port = Sockets.getsockname(listener)
+        active = Ref(0)
+        peak_active = Ref(0)
+        lock = ReentrantLock()
+        task = @async InochiCore.serve(req -> begin
+            Base.lock(lock) do
+                active[] += 1
+                peak_active[] = max(peak_active[], active[])
+            end
+            sleep(0.15)
+            Base.lock(lock) do
+                active[] -= 1
+            end
+            Response(200, Headers(["X-Test" => "1"]), "ok")
+        end, listener; allow_http1 = true, allow_http2 = false, max_threads = max_threads)
+        sleep(0.1)
+        t1 = @async request_once(port)
+        t2 = @async request_once(port)
+        resp1 = fetch(t1)
+        resp2 = fetch(t2)
+        close(listener)
+        @test fetch(task) === nothing
+        return peak_active[], (resp1, resp2)
+    end
+
+    peak1, responses1 = run_threaded_server(1)
+    @test peak1 == 1
+    @test all(resp -> occursin("200 OK", resp) && occursin("ok", resp), responses1)
+
+    peak2, responses2 = run_threaded_server(2)
+    @test peak2 >= 2
+    @test all(resp -> occursin("200 OK", resp) && occursin("ok", resp), responses2)
+end
+
 @testset "TLS" begin
     sslconfig = build_test_tls_context()
     listener = Sockets.listen(Sockets.IPv4(127, 0, 0, 1), 0)

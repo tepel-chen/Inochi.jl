@@ -20,6 +20,12 @@ Middleware dispatch benchmarks live in `benchmark/inochi_middleware_benchmark.jl
 julia --project=benchmark benchmark/inochi_middleware_benchmark.jl
 ```
 
+Threaded server throughput benchmark:
+
+```bash
+JULIA_NUM_THREADS=4 julia --project=benchmark benchmark/inochi_threaded_server_benchmark.jl
+```
+
 The benchmark uses the local checkout of `Inochi` via `benchmark/Project.toml`:
 
 ```toml

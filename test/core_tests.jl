@@ -329,6 +329,10 @@ end
         client = Sockets.connect(Sockets.IPv4(127, 0, 0, 1), port)
         write(client, Vector{UInt8}(codeunits("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")))
         flush(client)
+        for _ in 1:100
+            calls[] == 1 && break
+            sleep(0.01)
+        end
         @test calls[] == 1
         sleep(0.05)
         response = readavailable(client)

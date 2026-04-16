@@ -100,14 +100,33 @@ end
 _normalize_host(host::AbstractString) = getaddrinfo(host)
 
 """
-    serve(handler; host = "127.0.0.1", port = 8080, backlog = 128, max_content_size = typemax(Int), allow_http1 = true, allow_http2 = true, sslconfig = nothing)
+    serve(handler; host = "127.0.0.1", port = 8080, backlog = 128, max_content_size = typemax(Int), max_threads = Threads.nthreads(), allow_http1 = true, allow_http2 = true, sslconfig = nothing)
 
 Start an HTTP server for `handler`.
 
 Pass an `OpenSSL.SSLContext` configured with a server certificate and private key to serve HTTPS.
 When TLS is enabled, `allow_http2` and `allow_http1` control the advertised ALPN list.
+`max_threads` limits the number of connection handlers that may run at once.
 """
-function serve(handler; host::AbstractString="127.0.0.1", port::Integer=8080, backlog::Integer=128, max_content_size::Integer=typemax(Int), allow_http1::Bool=true, allow_http2::Bool=true, sslconfig = nothing)
-    serve(handler, listen(_normalize_host(host), port; backlog=backlog); max_content_size=max_content_size, allow_http1=allow_http1, allow_http2=allow_http2, sslconfig=sslconfig)
+function serve(handler; host::AbstractString="127.0.0.1", port::Integer=8080, backlog::Integer=128, max_content_size::Integer=typemax(Int), max_threads::Integer=Threads.nthreads(), allow_http1::Bool=true, allow_http2::Bool=true, sslconfig = nothing)
+    serve(handler, listen(_normalize_host(host), port; backlog=backlog); max_content_size=max_content_size, max_threads=max_threads, allow_http1=allow_http1, allow_http2=allow_http2, sslconfig=sslconfig)
 end
-function serve(handler, listener::Sockets.TCPServer; max_content_size::Integer = typemax(Int), allow_http1::Bool=true, allow_http2::Bool=true, sslconfig = nothing); while true; sock = try accept(listener) catch; isopen(listener) || return nothing; return nothing end; @async _handle_connection(sock, handler; max_content_size=max_content_size, allow_http1=allow_http1, allow_http2=allow_http2, sslconfig=sslconfig); end; return nothing end
+function serve(handler, listener::Sockets.TCPServer; max_content_size::Integer = typemax(Int), max_threads::Integer = Threads.nthreads(), allow_http1::Bool=true, allow_http2::Bool=true, sslconfig = nothing)
+    max_threads > 0 || throw(ArgumentError("max_threads must be positive"))
+    sem = Base.Semaphore(max_threads)
+    while true
+        sock = try
+            accept(listener)
+        catch
+            isopen(listener) || return nothing
+            return nothing
+        end
+        Base.acquire(sem)
+        Threads.@spawn try
+            _handle_connection(sock, handler; max_content_size=max_content_size, allow_http1=allow_http1, allow_http2=allow_http2, sslconfig=sslconfig)
+        finally
+            Base.release(sem)
+        end
+    end
+    return nothing
+end
