@@ -15,7 +15,7 @@ RuntimeGeneratedFunctions = "7e49a35a-f44a-4d26-94aa-eba1b4ca6b47"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
 [compat]
-HTTP = "1"
+HTTP = "1, 2.4"
 JSON = "1"
 MIMEs = "1.1.0"
 RuntimeGeneratedFunctions = "0.5.17"
